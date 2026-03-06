@@ -5,22 +5,10 @@ import { Link } from 'react-router-dom';
 import { SimpleAreaChart } from '@/components/charts/SimpleAreaChart';
 import { SimpleBarChart } from '@/components/charts/SimpleBarChart';
 import { useStore } from '@/store/useStore';
+import { useState, useEffect, useCallback } from 'react';
+import { dashboard as dashboardApi } from '@/lib/api';
 
-const stats = [
-  { label: 'Active Agents', value: '12', icon: Cpu, trend: '+3', color: 'text-emerald-600', bg: 'bg-emerald-100' },
-  { label: 'Research Tasks', value: '1,492', icon: Activity, trend: '+12%', color: 'text-blue-600', bg: 'bg-blue-100' },
-  { label: 'Memory Nodes', value: '8.4M', icon: Database, trend: '+2.1M', color: 'text-purple-600', bg: 'bg-purple-100' },
-  { label: 'System Load', value: '24%', icon: Zap, trend: '-4%', color: 'text-amber-600', bg: 'bg-amber-100' },
-];
-
-const recentActivity = [
-  { id: 1, task: 'Quantum Computing Market Analysis', status: 'Completed', time: '2m ago', agent: 'Alpha-7' },
-  { id: 2, task: 'Synthesize Q3 Earnings Reports', status: 'In Progress', time: '15m ago', agent: 'Beta-2' },
-  { id: 3, task: 'Competitor Feature Matrix', status: 'Completed', time: '1h ago', agent: 'Gamma-1' },
-  { id: 4, task: 'Regulatory Compliance Scan', status: 'Failed', time: '3h ago', agent: 'Delta-9' },
-];
-
-const performanceData = [
+const defaultPerformanceData = [
   { time: '00:00', load: 30, memory: 40 },
   { time: '04:00', load: 45, memory: 45 },
   { time: '08:00', load: 65, memory: 55 },
@@ -30,7 +18,7 @@ const performanceData = [
   { time: '24:00', load: 35, memory: 45 },
 ];
 
-const toolUsageData = [
+const defaultToolUsageData = [
   { name: 'Web Search', calls: 4000 },
   { name: 'Python Exec', calls: 3000 },
   { name: 'SQL Query', calls: 2000 },
@@ -38,8 +26,47 @@ const toolUsageData = [
   { name: 'Data Scraper', calls: 1000 },
 ];
 
+const iconMap = {
+  'Active Agents': Cpu,
+  'Research Tasks': Activity,
+  'Memory Nodes': Database,
+  'System Load': Zap,
+};
+const colorMap = {
+  'Active Agents': { color: 'text-emerald-600', bg: 'bg-emerald-100' },
+  'Research Tasks': { color: 'text-blue-600', bg: 'bg-blue-100' },
+  'Memory Nodes': { color: 'text-purple-600', bg: 'bg-purple-100' },
+  'System Load': { color: 'text-amber-600', bg: 'bg-amber-100' },
+};
+
 export default function Dashboard() {
   const { addNotification } = useStore();
+  const [stats, setStats] = useState([
+    { label: 'Active Agents', value: '0', icon: Cpu, trend: '', color: 'text-emerald-600', bg: 'bg-emerald-100' },
+    { label: 'Research Tasks', value: '0', icon: Activity, trend: '', color: 'text-blue-600', bg: 'bg-blue-100' },
+    { label: 'Memory Nodes', value: '0', icon: Database, trend: '', color: 'text-purple-600', bg: 'bg-purple-100' },
+    { label: 'System Load', value: '0%', icon: Zap, trend: '', color: 'text-amber-600', bg: 'bg-amber-100' },
+  ]);
+  const [recentActivity, setRecentActivity] = useState<Array<{ id: string; task: string; status: string; time: string; agent: string }>>([]);
+  const [performanceData, setPerformanceData] = useState(defaultPerformanceData);
+  const [toolUsageData, setToolUsageData] = useState(defaultToolUsageData);
+
+  useEffect(() => {
+    dashboardApi.getStats().then((data) => {
+      setStats([
+        { label: 'Active Agents', value: data.activeAgents, icon: Cpu, trend: '', color: 'text-emerald-600', bg: 'bg-emerald-100' },
+        { label: 'Research Tasks', value: data.researchTasks, icon: Activity, trend: '', color: 'text-blue-600', bg: 'bg-blue-100' },
+        { label: 'Memory Nodes', value: data.memoryNodes, icon: Database, trend: '', color: 'text-purple-600', bg: 'bg-purple-100' },
+        { label: 'System Load', value: data.systemLoad, icon: Zap, trend: '', color: 'text-amber-600', bg: 'bg-amber-100' },
+      ]);
+    }).catch(() => {});
+
+    dashboardApi.getActivity(10).then(setRecentActivity).catch(() => {});
+    dashboardApi.getPerformance().then(setPerformanceData).catch(() => {});
+    dashboardApi.getToolUsage().then((data) => {
+      if (data.length > 0) setToolUsageData(data);
+    }).catch(() => {});
+  }, []);
 
   const handleActivityClick = (task: string) => {
     addNotification({

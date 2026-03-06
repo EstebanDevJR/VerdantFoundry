@@ -1,8 +1,9 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
-import { Hexagon, Settings, User, Menu } from 'lucide-react';
+import { Hexagon, Settings, User, Menu, LogOut, LogIn } from 'lucide-react';
 import { useStore } from '@/store/useStore';
+import { auth } from '@/lib/api';
 
 const navLinks = [
   { name: 'Dashboard', route: '/dashboard' },
@@ -16,16 +17,21 @@ const navLinks = [
 ];
 
 export function Navbar() {
-  const { setSidebarOpen, addNotification } = useStore();
+  const { setSidebarOpen, addNotification, isAuthenticated, setAuthenticated } = useStore();
   const navigate = useNavigate();
 
   const handleUserClick = () => {
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
+    }
     navigate('/settings');
-    addNotification({
-      title: "User Profile",
-      message: "Manage your profile and preferences.",
-      type: "info"
-    });
+  };
+
+  const handleLogout = () => {
+    auth.clearToken();
+    setAuthenticated(false);
+    navigate('/login');
   };
 
   return (
@@ -88,12 +94,31 @@ export function Navbar() {
           >
             <Settings className="w-5 h-5" />
           </NavLink>
-          <div 
-            onClick={handleUserClick}
-            className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center cursor-pointer hover:border-primary/30 transition-colors duration-200"
-          >
-            <User className="w-5 h-5 text-slate-600" />
-          </div>
+          {isAuthenticated ? (
+            <>
+              <div 
+                onClick={handleUserClick}
+                className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center cursor-pointer hover:border-primary/30 transition-colors duration-200"
+              >
+                <User className="w-5 h-5 text-slate-600" />
+              </div>
+              <button
+                onClick={handleLogout}
+                className="w-10 h-10 rounded-full flex items-center justify-center text-slate-600 hover:bg-red-50 hover:text-red-600 transition-colors duration-200"
+                title="Sign out"
+              >
+                <LogOut className="w-5 h-5" />
+              </button>
+            </>
+          ) : (
+            <NavLink
+              to="/login"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors"
+            >
+              <LogIn className="w-4 h-4" />
+              Sign In
+            </NavLink>
+          )}
           <button
             onClick={() => setSidebarOpen(true)}
             className="w-10 h-10 rounded-full flex items-center justify-center text-slate-600 hover:bg-slate-100/50 hover:text-slate-900 transition-colors duration-200 md:hidden"

@@ -3,8 +3,10 @@ import { PrismaService } from './prisma/prisma.service';
 import { RedisService } from './redis/redis.service';
 import { RabbitMQService } from './rabbitmq/rabbitmq.service';
 import { ConfigService } from '@nestjs/config';
+import { Public } from './auth/decorators/public.decorator';
 import * as http from 'http';
 
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(
@@ -59,7 +61,7 @@ export class HealthController {
     const aiUrl = this.config.get<string>('AI_ENGINE_URL') || 'http://localhost:8000';
     try {
       await new Promise<void>((resolve, reject) => {
-        const req = http.get(aiUrl + '/health', (res) => {
+        const req = http.get(aiUrl + '/health/', (res) => {
           if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) resolve();
           else reject(new Error(`status ${res.statusCode}`));
         });

@@ -1,0 +1,215 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  firstName    String?   @map("first_name")
+  lastName     String?   @map("last_name")
+  role         String?   @default("user")
+  workspaceId  String?   @map("workspace_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  workspace      Workspace?   @relation(fields: [workspaceId], references: [id])
+  agents         Agent[]
+  tools          Tool[]
+  memoryNodes    MemoryNode[]
+  researches     Research[]
+  simulations    Simulation[]
+  experiments    Experiment[]
+  reports        Report[]
+  feedbacks      Feedback[]
+  apiKeys        ApiKey[]
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  users     User[]
+}
+
+model Agent {
+  id            String   @id @default(cuid())
+  name          String
+  role          String
+  objective     String?  @db.Text
+  status        String   @default("Idle") // Active | Idle | Offline | Error
+  autonomyLevel Int      @default(50) @map("autonomy_level")
+  configJson    Json?    @map("config_json")
+  tasks         Int      @default(0)
+  uptime        String?  @default("100%")
+  userId        String   @map("user_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tools      AgentTool[]
+  simulations Simulation[]
+}
+
+model Tool {
+  id          String   @id @default(cuid())
+  name        String
+  type        String   // External | Execution | Internal | Compute
+  description String?  @db.Text
+  schemaJson  Json?    @map("schema_json")
+  code        String?  @db.Text
+  latencyMs   Int?     @map("latency_ms")
+  successRate Float?   @map("success_rate")
+  status      String   @default("Healthy") // Healthy | Warning
+  calls       Int      @default(0)
+  userId      String   @map("user_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agents      AgentTool[]
+  executions  ToolExecution[]
+}
+
+model ToolExecution {
+  id        String   @id @default(cuid())
+  toolId    String   @map("tool_id")
+  params    Json?
+  result    Json?
+  logs      String[] @default([])
+  success   Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tool Tool @relation(fields: [toolId], references: [id], onDelete: Cascade)
+}
+
+model AgentTool {
+  agentId String
+  toolId  String
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  tool  Tool  @relation(fields: [toolId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, toolId])
+}
+
+model MemoryNode {
+  id        String   @id @default(cuid())
+  title     String
+  type      String   // document | data | image | code
+  content   String   @db.Text
+  sizeBytes Int      @map("size_bytes")
+  tags      String[] @default([])
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks MemoryChunk[]
+}
+
+model MemoryChunk {
+  id           String   @id @default(cuid())
+  memoryNodeId String   @map("memory_node_id")
+  content      String   @db.Text
+  embeddingId  String?  @map("embedding_id")
+  chunkIndex   Int      @map("chunk_index")
+
+  memoryNode MemoryNode @relation(fields: [memoryNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([memoryNodeId, chunkIndex])
+}
+
+model Research {
+  id             String    @id @default(cuid())
+  query          String    @db.Text
+  depth          String    @default("standard") // quick | standard | deep
+  focus          String    @default("general")  // general | market | technical
+  status         String    @default("running")  // running | completed | failed
+  reportContent  String?   @db.Text @map("report_content")
+  reportMetadata Json?     @map("report_metadata")
+  userId         String    @map("user_id")
+  startedAt      DateTime  @default(now()) @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+
+  user  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  logs  ResearchLog[]
+}
+
+model ResearchLog {
+  id         String   @id @default(cuid())
+  researchId String   @map("research_id")
+  timestamp  DateTime @default(now())
+  agent      String
+  message    String   @db.Text
+  type       String   // info | action | success | error
+
+  research Research @relation(fields: [researchId], references: [id], onDelete: Cascade)
+}
+
+model Simulation {
+  id         String   @id @default(cuid())
+  name       String
+  agentId    String   @map("agent_id")
+  status     String   @default("running") // running | paused | completed
+  progress   Int      @default(0)
+  configJson Json?    @map("config_json")
+  userId     String   @map("user_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Experiment {
+  id          String   @id @default(cuid())
+  name        String
+  status      String   @default("draft") // running | completed | draft
+  configsJson Json?    @map("configs_json")
+  metricsJson Json?    @map("metrics_json")
+  userId      String   @map("user_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Report {
+  id        String   @id @default(cuid())
+  title     String
+  blocks    Json     // [{ type, content, ... }]
+  themeId   String?  @map("theme_id")
+  layoutId  String?  @map("layout_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Feedback {
+  id         String   @id @default(cuid())
+  entityType String   @map("entity_type") // agent | tool | policy | research
+  entityId   String   @map("entity_id")
+  thumbsUp   Boolean  @map("thumbs_up")
+  userId     String   @map("user_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ApiKey {
+  id        String    @id @default(cuid())
+  name      String
+  key       String    @unique
+  prefix    String
+  userId    String    @map("user_id")
+  lastUsed  DateTime? @map("last_used")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

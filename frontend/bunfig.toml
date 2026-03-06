@@ -1,0 +1,9 @@
+# Bun config for Verdant Foundry frontend
+# https://bun.sh/docs/runtime/bunfig
+# https://bun.sh/docs/bundler/html
+
+[serve.static]
+# Tailwind CSS plugin for dev server (processes @import "tailwindcss")
+plugins = ["bun-plugin-tailwind"]
+# Inline process.env.* for dev (GEMINI_API_KEY used by @google/genai)
+env = "inline"

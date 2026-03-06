@@ -15,70 +15,24 @@ import {
   Network
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MemoryGraph } from "@/components/memory/MemoryGraph";
 import { useStore } from "@/store/useStore";
-
-const memories = [
-  {
-    id: "1",
-    title: "Q3 Market Analysis",
-    type: "document",
-    tags: ["research", "q3", "market"],
-    size: "2.4 MB",
-    date: "2 hours ago",
-    content:
-      "Comprehensive analysis of Q3 market trends indicating a 15% shift towards renewable energy sectors...",
-  },
-  {
-    id: "2",
-    title: "Competitor Feature Matrix",
-    type: "data",
-    tags: ["competitors", "features"],
-    size: "156 KB",
-    date: "5 hours ago",
-    content:
-      '{"competitorA": ["feature1", "feature2"], "competitorB": ["feature1", "feature3"]}',
-  },
-  {
-    id: "3",
-    title: "User Interview Transcripts",
-    type: "document",
-    tags: ["ux", "interviews"],
-    size: "4.1 MB",
-    date: "1 day ago",
-    content:
-      "Transcript 1: User expressed frustration with the current onboarding flow...",
-  },
-  {
-    id: "4",
-    title: "API Architecture Diagram",
-    type: "image",
-    tags: ["architecture", "api"],
-    size: "1.2 MB",
-    date: "2 days ago",
-    content: "[Image Data]",
-  },
-  {
-    id: "5",
-    title: "Pricing Strategy Model",
-    type: "code",
-    tags: ["pricing", "model"],
-    size: "45 KB",
-    date: "3 days ago",
-    content:
-      "def calculate_pricing(base, multiplier):\n    return base * multiplier",
-  },
-];
+import { memory as memoryApi } from "@/lib/api";
 
 export default function Memory() {
   const { addNotification } = useStore();
-  const [selectedMemory, setSelectedMemory] = useState<
-    (typeof memories)[0] | null
-  >(null);
+  const [memories, setMemories] = useState<any[]>([]);
+  const [selectedMemory, setSelectedMemory] = useState<any | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
+
+  useEffect(() => {
+    memoryApi.list().then((data: any) => {
+      if (Array.isArray(data)) setMemories(data);
+    }).catch(() => {});
+  }, []);
 
   const handleDownload = () => {
     addNotification({
@@ -88,13 +42,19 @@ export default function Memory() {
     });
   };
 
-  const handleDelete = () => {
-    addNotification({
-      title: "Memory Deleted",
-      message: `${selectedMemory?.title} has been removed from the memory bank.`,
-      type: "warning"
-    });
-    setSelectedMemory(null);
+  const handleDelete = async () => {
+    if (!selectedMemory) return;
+    try {
+      await fetch(`${import.meta.env?.VITE_API_URL || 'http://localhost:4000/api'}/memory/${selectedMemory.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('vf_access_token')}` },
+      });
+      setMemories(prev => prev.filter(m => m.id !== selectedMemory.id));
+      addNotification({ title: "Memory Deleted", message: `${selectedMemory.title} removed.`, type: "warning" });
+      setSelectedMemory(null);
+    } catch (err) {
+      addNotification({ title: "Error", message: (err as Error).message, type: "error" });
+    }
   };
 
   const handleFilter = () => {

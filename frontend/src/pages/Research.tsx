@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ThinkingVisualizer } from '@/components/research/ThinkingVisualizer';
 import { ExecutionTimeline } from '@/components/research/ExecutionTimeline';
 import { useStore } from '@/store/useStore';
+import { research as researchApi, createResearchSocket } from '@/lib/api';
 
 type LogEntry = {
   id: string;
@@ -24,14 +25,22 @@ export default function Research() {
   const [showConfig, setShowConfig] = useState(false);
   const [depth, setDepth] = useState<'quick' | 'standard' | 'deep'>('standard');
   const [focus, setFocus] = useState<'general' | 'market' | 'technical'>('general');
+  const [researchId, setResearchId] = useState<string | null>(null);
+  const [reportContent, setReportContent] = useState<string | null>(null);
+  const [pastResearches, setPastResearches] = useState<Array<{ id: string; query: string; status: string; startedAt: string }>>([]);
   
   const logsEndRef = useRef<HTMLDivElement>(null);
 
-  const handleSearch = (e: React.FormEvent) => {
+  useEffect(() => {
+    researchApi.list().then(setPastResearches).catch(() => {});
+  }, []);
+
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
     setStatus('running');
     setShowConfig(false);
+    setReportContent(null);
     setLogs([{
       id: Date.now().toString(),
       timestamp: new Date().toLocaleTimeString(),
@@ -39,6 +48,19 @@ export default function Research() {
       message: `Initializing ${depth} research protocol with ${focus} focus...`,
       type: 'info'
     }]);
+    try {
+      const res = await researchApi.start(query, depth, focus);
+      setResearchId(res.id);
+    } catch (err) {
+      setLogs(prev => [...prev, {
+        id: Date.now().toString(),
+        timestamp: new Date().toLocaleTimeString(),
+        agent: 'System',
+        message: `Failed to start research: ${(err as Error).message}`,
+        type: 'error'
+      }]);
+      setStatus('completed');
+    }
   };
 
   const handleReplay = () => {
@@ -70,37 +92,58 @@ export default function Research() {
   };
 
   useEffect(() => {
-    if (status === 'running') {
-      const interval = setInterval(() => {
-        setLogs(prev => {
-          if (prev.length > 15) {
-            setStatus('completed');
-            return [...prev, {
-              id: Date.now().toString(),
-              timestamp: new Date().toLocaleTimeString(),
-              agent: 'System',
-              message: 'Research synthesis complete.',
-              type: 'success'
-            }];
+    if (status !== 'running' || !researchId) return;
+    const closeWs = createResearchSocket(researchId, (event, payload: any) => {
+      if (event === 'log') {
+        setLogs(prev => [...prev, {
+          id: Date.now().toString() + Math.random(),
+          timestamp: new Date().toLocaleTimeString(),
+          agent: payload?.agent || 'System',
+          message: payload?.message || '',
+          type: payload?.type || 'info'
+        }]);
+      } else if (event === 'complete') {
+        if (payload?.reportContent) setReportContent(payload.reportContent);
+        setStatus('completed');
+        setLogs(prev => [...prev, {
+          id: Date.now().toString(),
+          timestamp: new Date().toLocaleTimeString(),
+          agent: 'System',
+          message: payload?.status === 'failed' ? 'Research failed.' : 'Research synthesis complete.',
+          type: payload?.status === 'failed' ? 'error' : 'success'
+        }]);
+        researchApi.list().then(setPastResearches).catch(() => {});
+      }
+    });
+
+    const poll = setInterval(async () => {
+      if (!researchId) return;
+      try {
+        const r = await researchApi.get(researchId) as { status: string; reportContent?: string };
+        if (r.status === 'completed' || r.status === 'failed') {
+          setStatus('completed');
+          if (r.reportContent) setReportContent(r.reportContent);
+          const logsData = await researchApi.getLogs(researchId);
+          if (logsData.length > 0) {
+            setLogs(logsData.map((l: any) => ({
+              id: l.id,
+              timestamp: new Date(l.timestamp).toLocaleTimeString(),
+              agent: l.agent,
+              message: l.message,
+              type: l.type
+            })));
           }
-          
-          const agents = ['Alpha-7', 'Beta-2', 'Gamma-1'];
-          const actions = ['Querying vector store...', 'Extracting entities...', 'Cross-referencing sources...', 'Generating summary...', 'Analyzing sentiment...', 'Verifying citations...'];
-          const randomAgent = agents[Math.floor(Math.random() * agents.length)];
-          const randomAction = actions[Math.floor(Math.random() * actions.length)];
-          
-          return [...prev, {
-            id: Date.now().toString(),
-            timestamp: new Date().toLocaleTimeString(),
-            agent: randomAgent,
-            message: randomAction,
-            type: 'action'
-          }];
-        });
-      }, 1200);
-      return () => clearInterval(interval);
-    }
-  }, [status]);
+          researchApi.list().then(setPastResearches).catch(() => {});
+          clearInterval(poll);
+        }
+      } catch {}
+    }, 3000);
+
+    return () => {
+      closeWs();
+      clearInterval(poll);
+    };
+  }, [status, researchId]);
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -191,22 +234,29 @@ export default function Research() {
               <History className="w-4 h-4" /> Recent Research
             </h3>
             <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-2">
-              {[
-                { title: 'Quantum Computing Market', date: 'Today, 10:42 AM', status: 'completed' },
-                { title: 'Competitor Feature Matrix', date: 'Yesterday', status: 'completed' },
-                { title: 'Regulatory Compliance Scan', date: 'Oct 24', status: 'failed' },
-                { title: 'Q3 Earnings Synthesis', date: 'Oct 22', status: 'completed' },
-              ].map((item, i) => (
-                <div key={i} className="p-3 rounded-xl border border-transparent hover:border-slate-200 hover:bg-white/60 cursor-pointer transition-all group">
+              {pastResearches.map((item) => (
+                <div key={item.id} onClick={async () => {
+                  setResearchId(item.id);
+                  setQuery(item.query);
+                  try {
+                    const report = await researchApi.getReport(item.id);
+                    if (report.content) { setReportContent(report.content); setStatus('completed'); }
+                    const logsData = await researchApi.getLogs(item.id);
+                    if (logsData.length > 0) setLogs(logsData.map((l: any) => ({ id: l.id, timestamp: new Date(l.timestamp).toLocaleTimeString(), agent: l.agent, message: l.message, type: l.type })));
+                  } catch {}
+                }} className="p-3 rounded-xl border border-transparent hover:border-slate-200 hover:bg-white/60 cursor-pointer transition-all group">
                   <div className="flex items-start justify-between mb-1">
-                    <h4 className="text-sm font-semibold text-slate-700 group-hover:text-primary-dark line-clamp-2">{item.title}</h4>
+                    <h4 className="text-sm font-semibold text-slate-700 group-hover:text-primary-dark line-clamp-2">{item.query.slice(0, 60)}</h4>
                   </div>
                   <div className="flex items-center justify-between mt-2">
-                    <span className="text-[10px] text-slate-400">{item.date}</span>
-                    <span className={`w-2 h-2 rounded-full ${item.status === 'completed' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                    <span className="text-[10px] text-slate-400">{new Date(item.startedAt).toLocaleDateString()}</span>
+                    <span className={`w-2 h-2 rounded-full ${item.status === 'completed' ? 'bg-emerald-500' : item.status === 'failed' ? 'bg-red-500' : 'bg-blue-500 animate-pulse'}`} />
                   </div>
                 </div>
               ))}
+              {pastResearches.length === 0 && (
+                <div className="text-xs text-slate-400 text-center py-4">No past research sessions</div>
+              )}
             </div>
           </div>
         </div>
@@ -428,49 +478,15 @@ export default function Research() {
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                     className="max-w-3xl mx-auto py-4"
                   >
-                    <div className="prose prose-slate prose-lg max-w-none">
-                      <h1 className="text-4xl font-black tracking-tight text-slate-900 mb-4">{query || 'Quantum Computing Market Analysis'}</h1>
-                      <p className="text-lg text-slate-600 lead">A comprehensive overview of recent trends, market adoption, and competitive landscape based on real-time data synthesis.</p>
-                      
-                      <h3 className="text-2xl font-bold text-slate-900 mt-10 mb-4">Executive Summary</h3>
-                      <p>Based on the analysis of recent data streams, the following key insights have been synthesized regarding the current state of the market:</p>
-                      <ul className="space-y-2">
-                        <li><strong>Market Adoption:</strong> Increased by 24% quarter-over-quarter, driven primarily by enterprise sector investments.</li>
-                        <li><strong>Competitive Landscape:</strong> Feature parity among top 3 competitors is expected within 6 months based on current development velocity.</li>
-                        <li><strong>Regulatory Environment:</strong> Compliance requires immediate attention regarding data locality and sovereignty laws in the EU.</li>
-                      </ul>
-                      
-                      <div className="p-6 bg-primary/5 rounded-2xl border border-primary/10 my-8">
-                        <h4 className="text-primary-dark mt-0 mb-2 flex items-center gap-2">
-                          <CheckCircle2 className="w-5 h-5" /> Strategic Recommendation
-                        </h4>
-                        <p className="mb-0 text-slate-800 font-medium">Accelerate deployment of localized data clusters to preempt regulatory friction while maintaining current growth trajectory. Consider partnering with regional cloud providers to expedite this process.</p>
+                    {reportContent ? (
+                      <div className="prose prose-slate prose-lg max-w-none" dangerouslySetInnerHTML={{ __html: renderMarkdown(reportContent) }} />
+                    ) : (
+                      <div className="prose prose-slate prose-lg max-w-none">
+                        <h1 className="text-4xl font-black tracking-tight text-slate-900 mb-4">{query}</h1>
+                        <p className="text-lg text-slate-600 lead">Research completed. No report content was generated (LLM API key may not be configured).</p>
+                        <p className="text-slate-500">Check that <code>OPENAI_API_KEY</code> is set in the AI Engine environment variables.</p>
                       </div>
-
-                      <h3 className="text-2xl font-bold text-slate-900 mt-10 mb-4">Sources & Citations</h3>
-                      <div className="space-y-3 not-prose">
-                        {[
-                          { title: 'Global Tech Trends Q3 Report', url: 'research.institute/reports/q3', credibility: 'High' },
-                          { title: 'Regulatory Shifts in Cloud Computing', url: 'policy.gov/tech/cloud', credibility: 'Official' },
-                          { title: 'Enterprise Adoption Metrics 2026', url: 'data.analytics/enterprise', credibility: 'Medium' }
-                        ].map((source, i) => (
-                          <div key={i} className="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-white transition-colors cursor-pointer">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-400">
-                                {i + 1}
-                              </div>
-                              <div>
-                                <div className="text-sm font-semibold text-slate-900">{source.title}</div>
-                                <div className="text-xs text-slate-500">{source.url}</div>
-                              </div>
-                            </div>
-                            <span className="text-xs font-medium px-2 py-1 rounded-md bg-slate-200 text-slate-700">
-                              {source.credibility}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    )}
                   </motion.div>
                 )}
               </div>
@@ -480,4 +496,19 @@ export default function Research() {
       </div>
     </PageWrapper>
   );
+}
+
+function renderMarkdown(md: string): string {
+  return md
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/^- (.*$)/gim, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+    .replace(/\n{2,}/g, '</p><p>')
+    .replace(/\n/g, '<br>')
+    .replace(/^(.+)$/gm, (m) => m.startsWith('<') ? m : `<p>${m}</p>`);
 }

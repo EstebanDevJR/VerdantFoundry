@@ -13,89 +13,82 @@ import {
   Edit3
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ToolEditor } from "@/components/tools/ToolEditor";
 import { useStore } from "@/store/useStore";
+import { tools as toolsApi } from "@/lib/api";
 
-const tools = [
-  {
-    id: "web-search",
-    name: "Web Search API",
-    type: "External",
-    icon: Globe,
-    calls: "12.4k",
-    status: "Healthy",
-    description:
-      "Searches the web for real-time information using Google Search API.",
-    latency: "120ms",
-    successRate: "99.2%",
-  },
-  {
-    id: "code-exec",
-    name: "Python Sandbox",
-    type: "Execution",
-    icon: Terminal,
-    calls: "3.2k",
-    status: "Healthy",
-    description:
-      "Executes Python code in a secure, isolated sandbox environment.",
-    latency: "450ms",
-    successRate: "95.8%",
-  },
-  {
-    id: "sql-query",
-    name: "Database Connector",
-    type: "Internal",
-    icon: Database,
-    calls: "8.9k",
-    status: "Warning",
-    description:
-      "Connects to internal PostgreSQL databases to retrieve structured data.",
-    latency: "850ms",
-    successRate: "88.4%",
-  },
-  {
-    id: "math-solver",
-    name: "Symbolic Math",
-    type: "Compute",
-    icon: Code,
-    calls: "1.1k",
-    status: "Healthy",
-    description: "Solves complex symbolic math equations using SymPy.",
-    latency: "45ms",
-    successRate: "99.9%",
-  },
-];
+const iconForType = (type: string) => {
+  switch (type.toLowerCase()) {
+    case 'external': return Globe;
+    case 'execution': return Terminal;
+    case 'internal': return Database;
+    default: return Code;
+  }
+};
 
 export default function Tools() {
   const { addNotification } = useStore();
-  const [selectedTool, setSelectedTool] = useState<(typeof tools)[0] | null>(
-    null,
-  );
+  const [tools, setTools] = useState<any[]>([]);
+  const [selectedTool, setSelectedTool] = useState<any | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
-  const handleAddTool = () => {
-    addNotification({
-      title: "Add Tool",
-      message: "Opening tool creation wizard...",
-      type: "info"
-    });
+  useEffect(() => {
+    toolsApi.list().then((data) => {
+      setTools(data.map((t: any) => ({ ...t, icon: iconForType(t.type) })));
+    }).catch(() => {});
+  }, []);
+
+  const handleAddTool = async () => {
+    const name = prompt("Tool name:");
+    if (!name) return;
+    const type = prompt("Tool type (External/Execution/Internal/Compute):", "Execution");
+    try {
+      const created = await toolsApi.list(); // refresh after
+      const newTool = { name, type: type || "Execution" };
+      // Create via API - we need to add this to the api client
+      const res = await fetch(`${import.meta.env?.VITE_API_URL || 'http://localhost:4000/api'}/tools`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('vf_access_token')}` },
+        body: JSON.stringify(newTool),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTools(prev => [...prev, { ...data, icon: iconForType(data.type) }]);
+        addNotification({ title: "Tool Created", message: `${data.name} added.`, type: "success" });
+      }
+    } catch (err) {
+      addNotification({ title: "Error", message: (err as Error).message, type: "error" });
+    }
   };
 
-  const handleRunTool = () => {
-    addNotification({
-      title: "Executing Tool",
-      message: `Running ${selectedTool?.name} in isolated environment...`,
-      type: "info"
-    });
+  const handleRunTool = async () => {
+    if (!selectedTool) return;
+    addNotification({ title: "Executing Tool", message: `Running ${selectedTool.name}...`, type: "info" });
+    try {
+      const result = await toolsApi.execute(selectedTool.id);
+      addNotification({
+        title: result.success ? "Execution Successful" : "Execution Failed",
+        message: result.logs?.join('\n') || 'No output',
+        type: result.success ? "success" : "error"
+      });
+    } catch (err) {
+      addNotification({ title: "Error", message: (err as Error).message, type: "error" });
+    }
   };
 
-  const handleViewActivity = () => {
-    addNotification({
-      title: "Activity Log",
-      message: `Fetching recent execution logs for ${selectedTool?.name}...`,
-      type: "info"
-    });
+  const handleViewActivity = async () => {
+    if (!selectedTool) return;
+    try {
+      const logs = await toolsApi.getLogs(selectedTool.id, 10);
+      addNotification({
+        title: "Activity Log",
+        message: logs.length > 0 ? `${logs.length} recent executions found.` : "No execution history yet.",
+        type: "info"
+      });
+    } catch (err) {
+      addNotification({ title: "Error", message: (err as Error).message, type: "error" });
+    }
   };
 
   return (

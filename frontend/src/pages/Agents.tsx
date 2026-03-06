@@ -9,9 +9,10 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AgentInspector } from "@/components/agents/AgentInspector";
 import { useStore } from "@/store/useStore";
+import { agents as agentsApi } from "@/lib/api";
 
 type AgentStatus = "Active" | "Idle" | "Offline" | "Error";
 
@@ -24,85 +25,47 @@ interface Agent {
   uptime: string;
 }
 
-const initialAgents: Agent[] = [
-  {
-    id: "alpha-7",
-    name: "Alpha-7",
-    role: "Deep Search",
-    status: "Active",
-    tasks: 142,
-    uptime: "99.9%",
-  },
-  {
-    id: "beta-2",
-    name: "Beta-2",
-    role: "Synthesis & Analysis",
-    status: "Idle",
-    tasks: 89,
-    uptime: "100%",
-  },
-  {
-    id: "gamma-1",
-    name: "Gamma-1",
-    role: "Fact Checking",
-    status: "Active",
-    tasks: 210,
-    uptime: "99.8%",
-  },
-  {
-    id: "delta-9",
-    name: "Delta-9",
-    role: "Data Extraction",
-    status: "Error",
-    tasks: 45,
-    uptime: "85.2%",
-  },
-];
-
 export default function Agents() {
   const { addNotification } = useStore();
-  const [agents, setAgents] = useState<Agent[]>(initialAgents);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [inspectingAgent, setInspectingAgent] = useState<Agent | null>(null);
 
-  const toggleStatus = (id: string) => {
-    setAgents(
-      agents.map((agent) => {
-        if (agent.id === id) {
-          const newStatus =
-            agent.status === "Active"
-              ? "Idle"
-              : agent.status === "Idle"
-                ? "Offline"
-                : "Active";
-          
-          addNotification({
-            title: "Agent Status Changed",
-            message: `${agent.name} is now ${newStatus}.`,
-            type: newStatus === "Active" ? "success" : newStatus === "Offline" ? "error" : "info"
-          });
-          
-          return { ...agent, status: newStatus };
-        }
-        return agent;
-      }),
-    );
+  useEffect(() => {
+    agentsApi.list().then((data) => {
+      setAgents(data.map((a: any) => ({ ...a, status: a.status as AgentStatus })));
+    }).catch(() => {});
+  }, []);
+
+  const toggleStatus = async (id: string) => {
+    const agent = agents.find(a => a.id === id);
+    if (!agent) return;
+    const action = agent.status === "Active" ? "pause" : agent.status === "Idle" ? "stop" : "start";
+    try {
+      const updated = await agentsApi.action(id, action) as any;
+      setAgents(agents.map(a => a.id === id ? { ...a, status: updated.status } : a));
+      addNotification({
+        title: "Agent Status Changed",
+        message: `${agent.name} is now ${updated.status}.`,
+        type: updated.status === "Active" ? "success" : updated.status === "Offline" ? "error" : "info"
+      });
+    } catch (err) {
+      addNotification({ title: "Error", message: (err as Error).message, type: "error" });
+    }
   };
 
-  const handleDeployAgent = () => {
-    const newAgent: Agent = {
-      id: `agent-${Date.now()}`,
-      name: `Sigma-${Math.floor(Math.random() * 100)}`,
-      role: "Data Processing",
-      status: "Active",
-      tasks: 0,
-      uptime: "100%",
-    };
-    setAgents([...agents, newAgent]);
-    addNotification({
-      title: "Agent Deployed",
-      message: `${newAgent.name} has been successfully deployed and is now active.`,
-      type: "success"
-    });
+  const handleDeployAgent = async () => {
+    const name = `Sigma-${Math.floor(Math.random() * 100)}`;
+    try {
+      const newAgent = await agentsApi.create({ name, role: "Data Processing" }) as any;
+      setAgents([...agents, { ...newAgent, status: newAgent.status as AgentStatus }]);
+      addNotification({
+        title: "Agent Deployed",
+        message: `${newAgent.name} has been successfully deployed.`,
+        type: "success"
+      });
+    } catch (err) {
+      addNotification({ title: "Error", message: (err as Error).message, type: "error" });
+    }
   };
 
   return (

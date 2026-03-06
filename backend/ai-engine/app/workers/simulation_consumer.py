@@ -27,26 +27,29 @@ async def process_simulation_message(body: bytes) -> None:
     headers = {"X-Internal-Key": settings.internal_api_secret}
     try:
         async with httpx.AsyncClient() as client:
-            await client.patch(
+            response = await client.patch(
                 url_base,
                 json={"progress": 0, "status": "running"},
                 headers=headers,
                 timeout=10.0,
             )
+            response.raise_for_status()
             await asyncio.sleep(0.5)
-            await client.patch(
+            response = await client.patch(
                 url_base,
                 json={"progress": 50},
                 headers=headers,
                 timeout=10.0,
             )
+            response.raise_for_status()
             await asyncio.sleep(0.5)
-            await client.patch(
+            response = await client.patch(
                 url_base,
                 json={"progress": 100, "status": "completed"},
                 headers=headers,
                 timeout=10.0,
             )
+            response.raise_for_status()
         logger.info("Simulation %s completed (agent=%s)", simulation_id, agent_id)
     except Exception as e:
         logger.exception("Simulation %s failed: %s", simulation_id, e)
@@ -54,7 +57,7 @@ async def process_simulation_message(body: bytes) -> None:
             async with httpx.AsyncClient() as client:
                 await client.patch(
                     url_base,
-                    json={"status": "completed"},
+                    json={"status": "failed"},
                     headers=headers,
                     timeout=10.0,
                 )

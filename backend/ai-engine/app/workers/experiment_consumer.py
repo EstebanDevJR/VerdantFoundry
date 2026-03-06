@@ -31,12 +31,13 @@ async def process_experiment_message(body: bytes) -> None:
         precision = 0.85 + (len(variants) % 3) * 0.05
         metrics = {"latency": latency, "precision": round(precision, 2), "variantsRun": len(variants)}
         async with httpx.AsyncClient() as client:
-            await client.patch(
+            response = await client.patch(
                 url,
                 json={"metricsJson": metrics, "status": "completed"},
                 headers=headers,
                 timeout=10.0,
             )
+            response.raise_for_status()
         logger.info("Experiment %s completed, metrics=%s", experiment_id, metrics)
     except Exception as e:
         logger.exception("Experiment %s failed: %s", experiment_id, e)
@@ -44,7 +45,7 @@ async def process_experiment_message(body: bytes) -> None:
             async with httpx.AsyncClient() as client:
                 await client.patch(
                     url,
-                    json={"status": "completed"},
+                    json={"status": "failed"},
                     headers=headers,
                     timeout=10.0,
                 )

@@ -43,6 +43,19 @@ async def run_research_pipeline(
     On failure returns ("", "failed").
     """
     try:
+        # Fail fast before any embedding/network call for deterministic behavior.
+        if not settings.openai_api_key:
+            await notify_core_log(
+                research_id,
+                "System",
+                "Research pipeline requires OPENAI_API_KEY.",
+                "error",
+            )
+            return (
+                "Research pipeline requires OPENAI_API_KEY. Please configure it in .env.",
+                "failed",
+            )
+
         # RAG search
         context_chunks: list[str] = []
         try:
@@ -85,17 +98,6 @@ async def run_research_pipeline(
         context = "\n\n".join(context_chunks) if context_chunks else "No prior knowledge base available."
 
         # LLM synthesis
-        if not settings.openai_api_key:
-            await notify_core_log(
-                research_id,
-                "System",
-                "Research pipeline requires OPENAI_API_KEY.",
-                "error",
-            )
-            return (
-                "Research pipeline requires OPENAI_API_KEY. Please configure it in .env.",
-                "failed",
-            )
         await notify_core_log(
             research_id,
             "System",

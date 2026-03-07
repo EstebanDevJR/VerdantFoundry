@@ -1,7 +1,8 @@
 import { PageWrapper } from "@/components/layout/PageWrapper";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useStore } from "@/store/useStore";
+import { research as researchApi, reports as reportsApi } from "@/lib/api";
 import { 
   FileText, 
   LayoutTemplate, 
@@ -30,31 +31,34 @@ export default function Reports() {
     { id: 'presentation', label: 'Presentation', icon: Presentation },
   ] as const;
 
-  const handleGenerate = () => {
+  const [latestResearchId, setLatestResearchId] = useState<string | null>(null);
+
+  useEffect(() => {
+    researchApi.list(1).then((items) => {
+      if (items.length > 0 && items[0].status === 'completed') {
+        setLatestResearchId(items[0].id);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const handleGenerate = async () => {
+    if (!latestResearchId) {
+      addNotification({ title: "No Research", message: "Complete a research session first to auto-generate a report.", type: "warning" });
+      return;
+    }
     setIsGenerating(true);
-    setTimeout(() => {
+    try {
+      const report = await reportsApi.createFromResearch(latestResearchId);
+      addNotification({ title: "Report Generated", message: `Report "${report.title}" created from latest research.`, type: "success" });
+    } catch (err) {
+      addNotification({ title: "Generation Failed", message: (err as Error).message, type: "error" });
+    } finally {
       setIsGenerating(false);
-      addNotification({
-        title: "Report Generated",
-        message: "AI has successfully generated the report content based on recent research.",
-        type: "success"
-      });
-    }, 2000);
+    }
   };
 
-  const handleExport = () => {
-    addNotification({
-      title: "Exporting Report",
-      message: "Preparing your document for download. This may take a moment...",
-      type: "info"
-    });
-    setTimeout(() => {
-      addNotification({
-        title: "Export Complete",
-        message: "Your report has been successfully exported as a PDF.",
-        type: "success"
-      });
-    }, 2500);
+  const handleExport = async () => {
+    addNotification({ title: "Exporting", message: "Preparing export... Use the Export button in the Report Builder for format selection.", type: "info" });
   };
 
   if (isFullscreen && activeTab === 'presentation') {

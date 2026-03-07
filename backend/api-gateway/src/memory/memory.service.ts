@@ -157,18 +157,45 @@ export class MemoryService {
     const nodes = await this.prisma.memoryNode.findMany({
       where: { userId },
       take: 50,
+      select: { id: true, title: true, type: true, tags: true },
     });
-    const nodeList = nodes.map((n, i) => ({
-      id: n.id,
-      title: n.title,
-      type: n.type,
-      x: (i % 5) * 200,
-      y: Math.floor(i / 5) * 150,
-    }));
-    const edges = nodes.slice(0, -1).map((n, i) => ({
-      source: n.id,
-      target: nodes[i + 1]?.id ?? nodes[0].id,
-    }));
+
+    const typeOffsets: Record<string, number> = { document: 0, data: 30, image: 60, code: 90 };
+    const radius = Math.max(200, nodes.length * 25);
+    const nodeList = nodes.map((n, i) => {
+      const angle = (2 * Math.PI * i) / nodes.length;
+      const offset = typeOffsets[n.type] ?? 0;
+      return {
+        id: n.id,
+        title: n.title,
+        type: n.type,
+        x: Math.round(400 + (radius + offset) * Math.cos(angle)),
+        y: Math.round(400 + (radius + offset) * Math.sin(angle)),
+      };
+    });
+
+    const tagIndex = new Map<string, string[]>();
+    for (const n of nodes) {
+      for (const tag of n.tags) {
+        if (!tagIndex.has(tag)) tagIndex.set(tag, []);
+        tagIndex.get(tag)!.push(n.id);
+      }
+    }
+
+    const edgeSet = new Set<string>();
+    const edges: { source: string; target: string; label: string }[] = [];
+    for (const [tag, ids] of tagIndex) {
+      for (let i = 0; i < ids.length; i++) {
+        for (let j = i + 1; j < ids.length; j++) {
+          const key = [ids[i], ids[j]].sort().join(':');
+          if (!edgeSet.has(key)) {
+            edgeSet.add(key);
+            edges.push({ source: ids[i], target: ids[j], label: tag });
+          }
+        }
+      }
+    }
+
     return { nodes: nodeList, edges };
   }
 

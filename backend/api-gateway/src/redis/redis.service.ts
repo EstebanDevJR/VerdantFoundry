@@ -34,6 +34,20 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return this.subscriber;
   }
 
+  async get(key: string): Promise<string | null> {
+    if (!this.client) return null;
+    return this.client.get(key);
+  }
+
+  async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
+    if (!this.client) return;
+    if (ttlSeconds) {
+      await this.client.set(key, value, 'EX', ttlSeconds);
+    } else {
+      await this.client.set(key, value);
+    }
+  }
+
   async publish(channel: string, message: string) {
     if (!this.client) return;
     await this.client.publish(channel, message);

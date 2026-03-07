@@ -72,6 +72,8 @@ export class ToolsService {
     });
     if (!tool) throw new NotFoundException('Tool not found');
     let result: { success: boolean; logs: string[]; result: unknown } = { success: false, logs: [], result: null };
+
+    const startMs = Date.now();
     try {
       const body = {
         tool_id: id,
@@ -89,10 +91,8 @@ export class ToolsService {
     } catch (e) {
       result = { success: false, logs: [`Execution failed: ${(e as Error).message}`], result: null };
     }
-    await this.prisma.tool.update({
-      where: { id },
-      data: { calls: { increment: 1 } },
-    });
+    const elapsedMs = Date.now() - startMs;
+
     await this.prisma.toolExecution.create({
       data: {
         toolId: id,
@@ -102,6 +102,33 @@ export class ToolsService {
         success: result.success ?? false,
       },
     });
+
+    const recentExecs = await this.prisma.toolExecution.findMany({
+      where: { toolId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      select: { success: true },
+    });
+    const totalRecent = recentExecs.length;
+    const successCount = recentExecs.filter((e) => e.success).length;
+
+    const allExecs = await this.prisma.toolExecution.count({ where: { toolId: id } });
+    const allSuccessful = await this.prisma.toolExecution.count({ where: { toolId: id, success: true } });
+
+    const rollingLatency = Math.round(
+      ((tool.latencyMs ?? elapsedMs) * Math.max(0, totalRecent - 1) + elapsedMs) / totalRecent,
+    );
+    const successRate = allExecs > 0 ? Math.round((allSuccessful / allExecs) * 1000) / 1000 : 1;
+
+    await this.prisma.tool.update({
+      where: { id },
+      data: {
+        calls: { increment: 1 },
+        latencyMs: rollingLatency,
+        successRate,
+      },
+    });
+
     return { success: result.success, logs: result.logs, result: result.result };
   }
 

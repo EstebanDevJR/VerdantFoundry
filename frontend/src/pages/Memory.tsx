@@ -12,7 +12,9 @@ import {
   Trash2,
   Download,
   List,
-  Network
+  Network,
+  Plus,
+  X
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useState, useEffect } from "react";
@@ -27,11 +29,20 @@ export default function Memory() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
+  const [stats, setStats] = useState<{ nodeCount: number; sizeBytes: number; sizeMB: string } | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({ title: '', type: 'document', content: '', tags: '' });
+  const [isCreating, setIsCreating] = useState(false);
 
-  useEffect(() => {
+  const loadMemories = () => {
     memoryApi.list().then((data: any) => {
       if (Array.isArray(data)) setMemories(data);
     }).catch(() => {});
+  };
+
+  useEffect(() => {
+    loadMemories();
+    memoryApi.getStats().then(setStats).catch(() => {});
   }, []);
 
   const handleDownload = () => {
@@ -60,6 +71,29 @@ export default function Memory() {
       message: "Opening advanced filter options...",
       type: "info"
     });
+  };
+
+  const handleCreateDocument = async () => {
+    if (!createForm.title.trim() || !createForm.content.trim()) return;
+    setIsCreating(true);
+    try {
+      const tags = createForm.tags.split(',').map(t => t.trim()).filter(Boolean);
+      await memoryApi.createDocument({
+        title: createForm.title,
+        type: createForm.type,
+        content: createForm.content,
+        tags: tags.length > 0 ? tags : undefined,
+      });
+      addNotification({ title: "Document Created", message: `"${createForm.title}" added to memory.`, type: "success" });
+      setShowCreateModal(false);
+      setCreateForm({ title: '', type: 'document', content: '', tags: '' });
+      loadMemories();
+      memoryApi.getStats().then(setStats).catch(() => {});
+    } catch (err) {
+      addNotification({ title: "Error", message: (err as Error).message, type: "error" });
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const [searchResults, setSearchResults] = useState<any[] | null>(null);
@@ -162,7 +196,7 @@ export default function Memory() {
               <div>
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-slate-500">Used Space</span>
-                  <span className="font-medium text-slate-900">45.2 GB</span>
+                  <span className="font-medium text-slate-900">{stats?.sizeMB ?? '—'}</span>
                 </div>
                 <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                   <div className="h-full bg-primary w-[45%]" />
@@ -171,7 +205,9 @@ export default function Memory() {
               <div className="pt-4 border-t border-slate-100">
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-slate-500">Vector Index</span>
-                  <span className="font-medium text-slate-900">1.2M nodes</span>
+                  <span className="font-medium text-slate-900">
+                    {stats ? `${stats.nodeCount.toLocaleString()} nodes` : '—'}
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">Sync Status</span>
@@ -180,6 +216,13 @@ export default function Memory() {
                   </span>
                 </div>
               </div>
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors shadow-md"
+              >
+                <Plus className="w-4 h-4" />
+                Create Document
+              </button>
             </div>
           </div>
 
@@ -387,6 +430,95 @@ export default function Memory() {
           )}
         </AnimatePresence>
       </div>
+
+      <AnimatePresence>
+        {showCreateModal && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-40"
+              onClick={() => setShowCreateModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            >
+              <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-bold text-slate-900">Create Document</h2>
+                  <button onClick={() => setShowCreateModal(false)} className="p-2 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Title</label>
+                    <input
+                      type="text"
+                      value={createForm.title}
+                      onChange={(e) => setCreateForm(f => ({ ...f, title: e.target.value }))}
+                      placeholder="Document title"
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all text-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Type</label>
+                    <select
+                      value={createForm.type}
+                      onChange={(e) => setCreateForm(f => ({ ...f, type: e.target.value }))}
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all text-slate-900"
+                    >
+                      <option value="document">Document</option>
+                      <option value="code">Code</option>
+                      <option value="data">Data</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Content</label>
+                    <textarea
+                      value={createForm.content}
+                      onChange={(e) => setCreateForm(f => ({ ...f, content: e.target.value }))}
+                      placeholder="Enter content..."
+                      rows={5}
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all text-slate-900 resize-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Tags (comma-separated)</label>
+                    <input
+                      type="text"
+                      value={createForm.tags}
+                      onChange={(e) => setCreateForm(f => ({ ...f, tags: e.target.value }))}
+                      placeholder="e.g. research, api, notes"
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all text-slate-900"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 mt-6">
+                  <button
+                    onClick={() => setShowCreateModal(false)}
+                    className="px-4 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCreateDocument}
+                    disabled={isCreating || !createForm.title.trim() || !createForm.content.trim()}
+                    className="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors shadow-md disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isCreating && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                    {isCreating ? 'Creating...' : 'Create'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </PageWrapper>
   );
 }

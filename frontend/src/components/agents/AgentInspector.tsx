@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Activity, Cpu, Database, Network, Bug, Play, Pause, Square, RefreshCw, Dna } from 'lucide-react';
+import { X, Activity, Cpu, Database, Network, Bug, Play, Pause, Square, RefreshCw, Dna, Loader2 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { AgentGenome } from './AgentGenome';
+import { agents as agentsApi } from '@/lib/api';
 
 interface AgentInspectorProps {
   agent: any;
@@ -14,6 +15,21 @@ export function AgentInspector({ agent, onClose }: AgentInspectorProps) {
   const [activeTab, setActiveTab] = useState<'state' | 'genome' | 'decisions' | 'debug'>('state');
   const [isDebugRunning, setIsDebugRunning] = useState(false);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [decisionLogs, setDecisionLogs] = useState<Array<{ id: string; timestamp: string; agent: string; message: string; type: string }>>([]);
+  const [memoryData, setMemoryData] = useState<{ summary: { nodeCount: number }; recentNodes: any[] } | null>(null);
+  const [logsLoading, setLogsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!agent?.id) return;
+    setLogsLoading(true);
+    Promise.allSettled([
+      agentsApi.getLogs(agent.id, 20),
+      agentsApi.getMemory(agent.id),
+    ]).then(([logsResult, memResult]) => {
+      if (logsResult.status === 'fulfilled') setDecisionLogs(logsResult.value);
+      if (memResult.status === 'fulfilled') setMemoryData(memResult.value);
+    }).finally(() => setLogsLoading(false));
+  }, [agent?.id]);
 
   const runDebugStep = () => {
     setIsDebugRunning(true);
@@ -114,8 +130,8 @@ export function AgentInspector({ agent, onClose }: AgentInspectorProps) {
                   <div className="font-mono font-bold text-slate-900 text-lg">{agent.tasks}</div>
                 </div>
                 <div className="bg-white rounded-2xl p-4 border border-slate-200/60 shadow-sm">
-                  <div className="text-[10px] text-slate-400 mb-1.5 font-bold uppercase tracking-widest">Cognitive Load</div>
-                  <div className="font-mono font-bold text-slate-900 text-lg">42%</div>
+                  <div className="text-[10px] text-slate-400 mb-1.5 font-bold uppercase tracking-widest">Memory Nodes</div>
+                  <div className="font-mono font-bold text-slate-900 text-lg">{memoryData?.summary?.nodeCount ?? 0}</div>
                 </div>
               </div>
 
@@ -167,21 +183,25 @@ export function AgentInspector({ agent, onClose }: AgentInspectorProps) {
 
           {activeTab === 'decisions' && (
             <motion.div key="decisions" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-4">
-              {[
-                { id: 1, time: '10:42:15 AM', action: 'Tool Selected', detail: 'Web Search API chosen due to lack of internal data on "Q3 Market Trends".', confidence: '98%' },
-                { id: 2, time: '10:42:12 AM', action: 'Query Parsed', detail: 'Extracted entities: [Q3, Market Trends, Renewable Energy].', confidence: '99%' },
-                { id: 3, time: '10:41:50 AM', action: 'Task Accepted', detail: 'Assigned priority HIGH based on user context.', confidence: '100%' },
-              ].map(decision => (
-                <div key={decision.id} className="p-5 bg-white border border-slate-200/60 rounded-2xl shadow-sm relative overflow-hidden group">
-                  <div className="absolute top-0 left-0 w-1.5 h-full bg-primary/30 group-hover:bg-primary transition-colors" />
-                  <div className="flex justify-between items-start mb-3">
-                    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">{decision.time}</span>
-                    <span className="text-[10px] font-bold text-primary-dark bg-primary/10 px-2.5 py-1 rounded-md uppercase tracking-widest">Conf: {decision.confidence}</span>
+              {logsLoading ? (
+                <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>
+              ) : decisionLogs.length > 0 ? (
+                decisionLogs.map(log => (
+                  <div key={log.id} className="p-5 bg-white border border-slate-200/60 rounded-2xl shadow-sm relative overflow-hidden group">
+                    <div className={`absolute top-0 left-0 w-1.5 h-full ${log.type === 'error' ? 'bg-red-300 group-hover:bg-red-500' : log.type === 'success' ? 'bg-emerald-300 group-hover:bg-emerald-500' : 'bg-primary/30 group-hover:bg-primary'} transition-colors`} />
+                    <div className="flex justify-between items-start mb-3">
+                      <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                      <span className="text-[10px] font-bold text-primary-dark bg-primary/10 px-2.5 py-1 rounded-md uppercase tracking-widest">{log.agent}</span>
+                    </div>
+                    <p className="text-sm text-slate-600 font-medium leading-relaxed">{log.message}</p>
                   </div>
-                  <h4 className="font-bold text-slate-900 mb-1.5">{decision.action}</h4>
-                  <p className="text-sm text-slate-600 font-medium leading-relaxed">{decision.detail}</p>
+                ))
+              ) : (
+                <div className="text-center py-8 text-slate-400">
+                  <Activity className="w-8 h-8 mx-auto mb-3 opacity-20" />
+                  <p className="text-sm">No decision logs yet for this agent.</p>
                 </div>
-              ))}
+              )}
             </motion.div>
           )}
 

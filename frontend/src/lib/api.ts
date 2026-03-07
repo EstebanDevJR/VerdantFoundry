@@ -185,6 +185,11 @@ export const agents = {
 export const tools = {
   list: () => api<Array<{ id: string; name: string; type: string; calls: string; status: string }>>('/tools'),
   get: (id: string) => api(`/tools/${id}`),
+  create: (data: { name: string; type?: string; description?: string; code?: string }) =>
+    api<{ id: string; name: string; type: string }>('/tools', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<{ name: string; type: string; description: string; code: string }>) =>
+    api(`/tools/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) => api(`/tools/${id}`, { method: 'DELETE' }),
   execute: (id: string, params?: Record<string, unknown>) =>
     api<{ success: boolean; logs: string[]; result: unknown }>(`/tools/${id}/execute`, {
       method: 'POST',
@@ -320,9 +325,28 @@ export const versions = {
     ),
 };
 
-// Users - API Keys
+// Kernel
+export const kernel = {
+  getMetrics: () => api<Record<string, unknown>>('/kernel/metrics'),
+  getState: () => api<{ state: string }>('/kernel/state'),
+  setState: (state: string) => api('/kernel/state', { method: 'POST', body: JSON.stringify({ state }) }),
+  getProcesses: () => api<Array<Record<string, unknown>>>('/kernel/processes'),
+  processAction: (id: string, action: string) =>
+    api(`/kernel/processes/${id}/action`, { method: 'POST', body: JSON.stringify({ action }) }),
+  getLogs: (limit?: number) =>
+    api<Array<Record<string, unknown>>>(limit ? `/kernel/logs?limit=${limit}` : '/kernel/logs'),
+  getNetwork: () => api<{ nodes: Array<Record<string, unknown>>; edges: Array<Record<string, unknown>> }>('/kernel/network'),
+  getFilesystem: () => api<{ folders: Array<Record<string, unknown>>; files: Array<Record<string, unknown>> }>('/kernel/filesystem'),
+};
+
+// Users
 export const users = {
   getProfile: () => api<{ id: string; email: string; firstName: string | null; lastName: string | null; role: string }>('/users/me'),
+  updateProfile: (data: { firstName?: string; lastName?: string }) =>
+    api<{ id: string; email: string; firstName: string | null; lastName: string | null }>('/users/me', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
   getApiKeys: () =>
     api<Array<{ id: string; name: string; key: string; prefix: string; lastUsed: string | null; createdAt: string }>>('/users/me/api-keys'),
   createApiKey: (name: string, prefix?: 'vf_live' | 'vf_test') =>

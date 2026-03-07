@@ -1,5 +1,7 @@
 """Embedding service for vector search."""
 
+from typing import Optional
+
 from openai import AsyncOpenAI
 
 from app.config import settings
@@ -7,11 +9,13 @@ from app.config import settings
 
 class EmbeddingService:
     def __init__(self) -> None:
-        self.client = AsyncOpenAI(api_key=settings.openai_api_key or "sk-placeholder")
+        self.client: Optional[AsyncOpenAI] = None
+        if settings.openai_api_key:
+            self.client = AsyncOpenAI(api_key=settings.openai_api_key)
         self.model = settings.embedding_model
 
     def _ensure_api_key(self) -> None:
-        if not settings.openai_api_key:
+        if not settings.openai_api_key or self.client is None:
             raise ValueError("OPENAI_API_KEY is not configured. Set it in .env for memory RAG.")
 
     async def embed_text(self, text: str) -> list[float]:

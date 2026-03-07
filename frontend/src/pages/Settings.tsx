@@ -27,7 +27,7 @@ import {
 type Tab = 'profile' | 'preferences' | 'api-keys' | 'team' | 'privacy';
 
 export default function Settings() {
-  const { addNotification } = useStore();
+  const { addNotification, ambientParticles, setAmbientParticles } = useStore();
   const [activeTab, setActiveTab] = useState<Tab>('profile');
   const [isSaving, setIsSaving] = useState(false);
   const [showKey, setShowKey] = useState<string | null>(null);
@@ -252,6 +252,22 @@ export default function Settings() {
                           </div>
                           <label className="relative inline-flex items-center cursor-pointer">
                             <input type="checkbox" className="sr-only peer" defaultChecked />
+                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                          </label>
+                        </div>
+
+                        <div className="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-200 shadow-sm">
+                          <div>
+                            <h3 className="font-semibold text-slate-900">Ambient Particles</h3>
+                            <p className="text-sm text-slate-500">Floating reactive particles that respond to mouse movement.</p>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="sr-only peer"
+                              checked={ambientParticles}
+                              onChange={(e) => setAmbientParticles(e.target.checked)}
+                            />
                             <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                           </label>
                         </div>

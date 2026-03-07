@@ -1,7 +1,8 @@
 import { PageWrapper } from "@/components/layout/PageWrapper";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useStore } from "@/store/useStore";
+import { kernel as kernelApi } from "@/lib/api";
 import { 
   Cpu, 
   Activity, 
@@ -26,8 +27,18 @@ export default function Kernel() {
   const [activeTab, setActiveTab] = useState<Tab>('monitor');
   const [systemState, setSystemState] = useState<'running' | 'paused' | 'stopped'>('running');
 
-  const handleStateChange = (newState: 'running' | 'paused' | 'stopped') => {
+  useEffect(() => {
+    kernelApi.getState().then((data) => {
+      const s = (data as any)?.state;
+      if (s === 'running' || s === 'paused' || s === 'stopped') setSystemState(s);
+    }).catch(() => {});
+  }, []);
+
+  const handleStateChange = async (newState: 'running' | 'paused' | 'stopped') => {
     setSystemState(newState);
+    try {
+      await kernelApi.setState(newState);
+    } catch {}
     addNotification({
       title: `System ${newState.charAt(0).toUpperCase() + newState.slice(1)}`,
       message: `Kernel state changed to ${newState}.`,
@@ -35,13 +46,14 @@ export default function Kernel() {
     });
   };
 
-  const handleRestart = () => {
+  const handleRestart = async () => {
     addNotification({
       title: "System Restarting",
       message: "Initiating kernel restart sequence...",
       type: "info"
     });
     setSystemState('stopped');
+    try { await kernelApi.setState('stopped'); } catch {}
     setTimeout(() => handleStateChange('running'), 2000);
   };
 

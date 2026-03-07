@@ -135,8 +135,20 @@ export class AgentsService {
     autonomyLevel: number;
     tasks: number;
     uptime: string | null;
+    createdAt?: Date;
     tools?: { tool: { id: string; name: string; type: string } }[];
   }) {
+    let uptimeStr = agent.uptime ?? '100%';
+    if (agent.createdAt) {
+      const ms = Date.now() - agent.createdAt.getTime();
+      const minutes = Math.floor(ms / 60000);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+      if (days > 0) uptimeStr = `${days}d ${hours % 24}h`;
+      else if (hours > 0) uptimeStr = `${hours}h ${minutes % 60}m`;
+      else uptimeStr = `${minutes}m`;
+    }
+
     return {
       id: agent.id,
       name: agent.name,
@@ -144,7 +156,7 @@ export class AgentsService {
       objective: agent.objective,
       status: agent.status,
       tasks: agent.tasks,
-      uptime: agent.uptime ?? '100%',
+      uptime: uptimeStr,
       autonomyLevel: agent.autonomyLevel,
       tools: agent.tools?.map((t) => ({ id: t.tool.id, name: t.tool.name, type: t.tool.type })) ?? [],
     };

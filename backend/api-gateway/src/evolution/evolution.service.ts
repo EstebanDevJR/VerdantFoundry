@@ -60,24 +60,72 @@ export class EvolutionService {
   }
 
   async getSuggestions(type?: string) {
-    const suggestions = [
-      {
-        id: 1,
+    const suggestions: { id: number; type: string; target: string; title: string; description: string; impact: string }[] = [];
+    let nextId = 1;
+
+    const underutilizedAgents = await this.prisma.agent.findMany({
+      where: { tasks: { lt: 3 }, status: { not: 'Offline' } },
+      take: 5,
+      select: { name: true, tasks: true },
+    });
+    for (const agent of underutilizedAgents) {
+      suggestions.push({
+        id: nextId++,
         type: 'agent',
-        target: 'alpha-7',
-        title: 'Increase search depth',
-        description: 'Agent could benefit from deeper search iterations',
-        impact: 'High',
-      },
-      {
-        id: 2,
-        type: 'tool',
-        target: 'web-search',
-        title: 'Add caching layer',
-        description: 'Reduce latency for repeated queries',
-        impact: 'Medium',
-      },
-    ];
+        target: agent.name,
+        title: 'Increase utilization',
+        description: `Agent "${agent.name}" has only ${agent.tasks} task(s). Consider assigning more work.`,
+        impact: agent.tasks === 0 ? 'High' : 'Medium',
+      });
+    }
+
+    const toolsWithExecs = await this.prisma.tool.findMany({
+      where: { calls: { gt: 0 } },
+      take: 10,
+      select: { id: true, name: true, calls: true },
+    });
+    for (const tool of toolsWithExecs) {
+      const failCount = await this.prisma.toolExecution.count({
+        where: { toolId: tool.id, success: false },
+      });
+      const errorRate = failCount / tool.calls;
+      if (errorRate > 0.3) {
+        suggestions.push({
+          id: nextId++,
+          type: 'tool',
+          target: tool.name,
+          title: 'Improve reliability',
+          description: `Tool "${tool.name}" has a ${Math.round(errorRate * 100)}% error rate across ${tool.calls} calls.`,
+          impact: errorRate > 0.6 ? 'High' : 'Medium',
+        });
+      }
+    }
+
+    const negativeFeedback = await this.prisma.feedback.findMany({
+      where: { thumbsUp: false },
+      take: 10,
+      orderBy: { createdAt: 'desc' },
+      select: { entityType: true, entityId: true },
+    });
+    for (const fb of negativeFeedback) {
+      let entityName = fb.entityId;
+      if (fb.entityType === 'agent') {
+        const agent = await this.prisma.agent.findUnique({ where: { id: fb.entityId }, select: { name: true } });
+        if (agent) entityName = agent.name;
+      } else if (fb.entityType === 'tool') {
+        const tool = await this.prisma.tool.findUnique({ where: { id: fb.entityId }, select: { name: true } });
+        if (tool) entityName = tool.name;
+      }
+      suggestions.push({
+        id: nextId++,
+        type: fb.entityType,
+        target: entityName,
+        title: 'Review configuration',
+        description: `Negative feedback received for ${fb.entityType} "${entityName}".`,
+        impact: 'Low',
+      });
+    }
+
     if (type) return suggestions.filter((s) => s.type === type);
     return suggestions;
   }

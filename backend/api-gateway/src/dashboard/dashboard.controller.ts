@@ -17,8 +17,8 @@ export class DashboardController {
   }
 
   @Get('performance')
-  getPerformance(@Query('period') period?: string) {
-    return this.dashboardService.getPerformance(period);
+  getPerformance(@CurrentUser('id') userId: string) {
+    return this.dashboardService.getPerformance(userId);
   }
 
   @Get('tool-usage')

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore } from '@/store/useStore';
+import { kernel } from '@/lib/api';
 import { 
   Cpu, 
   Play, 
@@ -13,51 +14,79 @@ import {
   AlignLeft, 
   MoreVertical,
   Zap,
-  HardDrive
+  HardDrive,
+  Loader2
 } from 'lucide-react';
+
+interface Process {
+  id: string;
+  name: string;
+  role: string;
+  status: string;
+  cpu: number;
+  mem: number;
+  time: string;
+  priority: string;
+}
+
+function mapProcess(raw: Record<string, unknown>): Process {
+  return {
+    id: String(raw.id ?? raw.pid ?? ''),
+    name: String(raw.name ?? raw.agent ?? raw.id ?? ''),
+    role: String(raw.role ?? raw.type ?? 'Unknown'),
+    status: String(raw.status ?? 'unknown'),
+    cpu: Number(raw.cpu ?? raw.cpuUsage ?? raw.cpu_usage ?? 0),
+    mem: Number(raw.mem ?? raw.memory ?? raw.memoryGB ?? raw.memory_gb ?? 0),
+    time: String(raw.time ?? raw.execTime ?? raw.exec_time ?? raw.uptime ?? '00:00:00'),
+    priority: String(raw.priority ?? 'Normal'),
+  };
+}
 
 export function ProcessManager() {
   const { addNotification } = useStore();
   const [viewMode, setViewMode] = useState<'list' | 'tree'>('list');
-  const [processes, setProcesses] = useState([
-    { id: 'P-101', name: 'Alpha-7', role: 'Deep Search', status: 'running', cpu: 45, mem: 1.2, time: '02:15:30', priority: 'High' },
-    { id: 'P-102', name: 'Beta-2', role: 'Synthesis', status: 'paused', cpu: 0, mem: 0.8, time: '00:45:12', priority: 'Normal' },
-    { id: 'P-103', name: 'Gamma-9', role: 'Data Extraction', status: 'queued', cpu: 0, mem: 0, time: '00:00:00', priority: 'Low' },
-    { id: 'P-104', name: 'Delta-X', role: 'System Monitor', status: 'running', cpu: 12, mem: 0.4, time: '14:20:05', priority: 'Critical' },
-  ]);
+  const [processes, setProcesses] = useState<Process[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const toggleStatus = (id: string, newStatus: string) => {
-    setProcesses(processes.map(p => p.id === id ? { ...p, status: newStatus } : p));
-    addNotification({
-      title: `Process ${newStatus.charAt(0).toUpperCase() + newStatus.slice(1)}`,
-      message: `Process ${id} is now ${newStatus}.`,
-      type: newStatus === 'running' ? 'success' : 'warning'
-    });
-  };
+  const fetchProcesses = useCallback(async () => {
+    try {
+      const data = await kernel.getProcesses();
+      setProcesses(data.map(mapProcess));
+    } catch {
+      /* keep stale data */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const handleRestart = (id: string) => {
-    addNotification({
-      title: "Process Restarting",
-      message: `Restarting process ${id}...`,
-      type: "info"
-    });
-  };
+  useEffect(() => {
+    fetchProcesses();
+  }, [fetchProcesses]);
 
-  const handleTerminate = (id: string) => {
-    addNotification({
-      title: "Process Terminated",
-      message: `Process ${id} has been terminated.`,
-      type: "error"
-    });
-    setProcesses(processes.filter(p => p.id !== id));
+  const handleAction = async (id: string, action: string) => {
+    try {
+      await kernel.processAction(id, action);
+      const labelMap: Record<string, string> = { pause: 'paused', resume: 'running', terminate: 'terminated', restart: 'restarting' };
+      const newStatus = labelMap[action] ?? action;
+
+      if (action === 'terminate') {
+        setProcesses((prev) => prev.filter((p) => p.id !== id));
+      } else {
+        setProcesses((prev) => prev.map((p) => (p.id === id ? { ...p, status: newStatus } : p)));
+      }
+
+      addNotification({
+        title: `Process ${action.charAt(0).toUpperCase() + action.slice(1)}`,
+        message: `Process ${id} action "${action}" succeeded.`,
+        type: action === 'terminate' ? 'error' : action === 'pause' ? 'warning' : 'success',
+      });
+    } catch {
+      addNotification({ title: 'Action Failed', message: `Failed to ${action} process ${id}.`, type: 'error' });
+    }
   };
 
   const handleStartNew = () => {
-    addNotification({
-      title: "New Process",
-      message: "Opening new process configuration...",
-      type: "info"
-    });
+    addNotification({ title: 'New Process', message: 'Opening new process configuration...', type: 'info' });
   };
 
   return (
@@ -105,98 +134,106 @@ export function ProcessManager() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-2">
-          <AnimatePresence>
-            {processes.map((process, i) => (
-              <motion.div 
-                key={process.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ delay: i * 0.05 }}
-                className="grid grid-cols-12 gap-4 px-4 py-3 items-center bg-white/60 border border-slate-200 rounded-2xl hover:border-primary/30 hover:shadow-sm transition-all group"
-              >
-                <div className="col-span-3 flex items-center gap-3">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                    process.status === 'running' ? 'bg-emerald-50 text-emerald-600' :
-                    process.status === 'paused' ? 'bg-amber-50 text-amber-600' :
-                    'bg-slate-100 text-slate-500'
-                  }`}>
-                    <Cpu className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-slate-900 flex items-center gap-2">
-                      {process.name}
-                      <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{process.id}</span>
+          {loading ? (
+            <div className="flex items-center justify-center h-32 text-slate-400 gap-2">
+              <Loader2 className="w-5 h-5 animate-spin" /> Loading processes…
+            </div>
+          ) : processes.length === 0 ? (
+            <div className="flex items-center justify-center h-32 text-slate-400">No processes found</div>
+          ) : (
+            <AnimatePresence>
+              {processes.map((process, i) => (
+                <motion.div 
+                  key={process.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ delay: i * 0.05 }}
+                  className="grid grid-cols-12 gap-4 px-4 py-3 items-center bg-white/60 border border-slate-200 rounded-2xl hover:border-primary/30 hover:shadow-sm transition-all group"
+                >
+                  <div className="col-span-3 flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                      process.status === 'running' ? 'bg-emerald-50 text-emerald-600' :
+                      process.status === 'paused' ? 'bg-amber-50 text-amber-600' :
+                      'bg-slate-100 text-slate-500'
+                    }`}>
+                      <Cpu className="w-4 h-4" />
                     </div>
-                    <div className="text-xs text-slate-500">{process.role}</div>
+                    <div>
+                      <div className="font-semibold text-slate-900 flex items-center gap-2">
+                        {process.name}
+                        <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{process.id}</span>
+                      </div>
+                      <div className="text-xs text-slate-500">{process.role}</div>
+                    </div>
                   </div>
-                </div>
 
-                <div className="col-span-2 flex items-center gap-2">
-                  <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider ${
-                    process.status === 'running' ? 'bg-emerald-100 text-emerald-700' :
-                    process.status === 'paused' ? 'bg-amber-100 text-amber-700' :
-                    'bg-slate-100 text-slate-600'
-                  }`}>
-                    {process.status === 'running' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />}
-                    {process.status}
-                  </span>
-                  <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                    process.priority === 'Critical' ? 'bg-red-50 text-red-600 border border-red-200' :
-                    process.priority === 'High' ? 'bg-orange-50 text-orange-600 border border-orange-200' :
-                    'bg-slate-50 text-slate-500 border border-slate-200'
-                  }`}>
-                    {process.priority}
-                  </span>
-                </div>
-
-                <div className="col-span-2 flex items-center gap-3">
-                  <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className={`h-full ${process.cpu > 80 ? 'bg-red-500' : process.cpu > 50 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${process.cpu}%` }} />
+                  <div className="col-span-2 flex items-center gap-2">
+                    <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider ${
+                      process.status === 'running' ? 'bg-emerald-100 text-emerald-700' :
+                      process.status === 'paused' ? 'bg-amber-100 text-amber-700' :
+                      'bg-slate-100 text-slate-600'
+                    }`}>
+                      {process.status === 'running' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />}
+                      {process.status}
+                    </span>
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                      process.priority === 'Critical' ? 'bg-red-50 text-red-600 border border-red-200' :
+                      process.priority === 'High' ? 'bg-orange-50 text-orange-600 border border-orange-200' :
+                      'bg-slate-50 text-slate-500 border border-slate-200'
+                    }`}>
+                      {process.priority}
+                    </span>
                   </div>
-                  <span className="text-xs font-mono font-medium text-slate-700 w-8">{process.cpu}%</span>
-                </div>
 
-                <div className="col-span-2 flex items-center gap-3">
-                  <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500" style={{ width: `${(process.mem / 4) * 100}%` }} />
+                  <div className="col-span-2 flex items-center gap-3">
+                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className={`h-full ${process.cpu > 80 ? 'bg-red-500' : process.cpu > 50 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${process.cpu}%` }} />
+                    </div>
+                    <span className="text-xs font-mono font-medium text-slate-700 w-8">{process.cpu}%</span>
                   </div>
-                  <span className="text-xs font-mono font-medium text-slate-700 w-12">{process.mem}GB</span>
-                </div>
 
-                <div className="col-span-2 flex items-center gap-2 text-slate-600 font-mono text-xs">
-                  <Clock className="w-3.5 h-3.5 text-slate-400" />
-                  {process.time}
-                </div>
+                  <div className="col-span-2 flex items-center gap-3">
+                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-blue-500" style={{ width: `${(process.mem / 4) * 100}%` }} />
+                    </div>
+                    <span className="text-xs font-mono font-medium text-slate-700 w-12">{process.mem}GB</span>
+                  </div>
 
-                <div className="col-span-1 flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  {process.status === 'running' ? (
-                    <button onClick={() => toggleStatus(process.id, 'paused')} className="p-1.5 rounded-md text-amber-600 hover:bg-amber-50 transition-colors" title="Pause">
-                      <Pause className="w-4 h-4" />
+                  <div className="col-span-2 flex items-center gap-2 text-slate-600 font-mono text-xs">
+                    <Clock className="w-3.5 h-3.5 text-slate-400" />
+                    {process.time}
+                  </div>
+
+                  <div className="col-span-1 flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {process.status === 'running' ? (
+                      <button onClick={() => handleAction(process.id, 'pause')} className="p-1.5 rounded-md text-amber-600 hover:bg-amber-50 transition-colors" title="Pause">
+                        <Pause className="w-4 h-4" />
+                      </button>
+                    ) : (
+                      <button onClick={() => handleAction(process.id, 'resume')} className="p-1.5 rounded-md text-emerald-600 hover:bg-emerald-50 transition-colors" title="Resume">
+                        <Play className="w-4 h-4" />
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => handleAction(process.id, 'restart')}
+                      className="p-1.5 rounded-md text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors" 
+                      title="Restart"
+                    >
+                      <RotateCcw className="w-4 h-4" />
                     </button>
-                  ) : (
-                    <button onClick={() => toggleStatus(process.id, 'running')} className="p-1.5 rounded-md text-emerald-600 hover:bg-emerald-50 transition-colors" title="Resume">
-                      <Play className="w-4 h-4" />
+                    <button 
+                      onClick={() => handleAction(process.id, 'terminate')}
+                      className="p-1.5 rounded-md text-red-500 hover:bg-red-50 transition-colors" 
+                      title="Terminate"
+                    >
+                      <Square className="w-4 h-4" />
                     </button>
-                  )}
-                  <button 
-                    onClick={() => handleRestart(process.id)}
-                    className="p-1.5 rounded-md text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors" 
-                    title="Restart"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                  </button>
-                  <button 
-                    onClick={() => handleTerminate(process.id)}
-                    className="p-1.5 rounded-md text-red-500 hover:bg-red-50 transition-colors" 
-                    title="Terminate"
-                  >
-                    <Square className="w-4 h-4" />
-                  </button>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          )}
         </div>
       </div>
     </div>

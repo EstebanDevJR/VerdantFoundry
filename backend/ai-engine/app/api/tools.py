@@ -54,9 +54,9 @@ async def execute_tool(request: ExecuteToolRequest):
             finally:
                 os.unlink(tmp)
         else:
-            logs.append("No code provided. Send 'code' in body or params to execute.")
+            logs.append("No executable code provided. Include 'code' field in request body.")
             result = {"message": "No code in body or params"}
-            success = True
+            success = False
     except subprocess.TimeoutExpired:
         logs.append("Execution timed out (30s)")
         success = False

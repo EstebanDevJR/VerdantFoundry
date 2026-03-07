@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     rabbitmq_research_queue: str = "research.tasks"
     rabbitmq_simulation_queue: str = "simulation.tasks"
     rabbitmq_experiment_queue: str = "experiment.tasks"
+    rabbitmq_memory_queue: str = "verdant.memory"
     core_api_url: str = "http://localhost:4000/api"
     redis_url: str = "redis://localhost:6379"
     internal_api_secret: str = "verdant-internal-secret"

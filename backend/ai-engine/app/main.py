@@ -7,6 +7,7 @@ from app.api import health, llm, memory, research, tools
 from app.workers.research_consumer import run_research_consumer
 from app.workers.simulation_consumer import run_simulation_consumer
 from app.workers.experiment_consumer import run_experiment_consumer
+from app.workers.memory_consumer import run_memory_consumer
 
 
 @asynccontextmanager
@@ -14,8 +15,9 @@ async def lifespan(app: FastAPI):
     research_task = asyncio.create_task(run_research_consumer())
     simulation_task = asyncio.create_task(run_simulation_consumer())
     experiment_task = asyncio.create_task(run_experiment_consumer())
+    memory_task = asyncio.create_task(run_memory_consumer())
     yield
-    for task in (research_task, simulation_task, experiment_task):
+    for task in (research_task, simulation_task, experiment_task, memory_task):
         task.cancel()
         try:
             await task

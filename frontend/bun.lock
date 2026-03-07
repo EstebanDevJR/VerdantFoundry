@@ -24,6 +24,7 @@
         "zustand": "^5.0.11",
       },
       "devDependencies": {
+        "@types/bun": "^1.3.10",
         "@types/express": "^4.17.21",
         "@types/node": "^22.14.0",
         "@types/prismjs": "^1.26.6",
@@ -174,6 +175,8 @@
 
     "@types/body-parser": ["@types/body-parser@1.19.6", "", { "dependencies": { "@types/connect": "*", "@types/node": "*" } }, "sha512-HLFeCYgz89uk22N5Qg3dvGvsv46B8GLvKKo1zKG4NybA8U2DiEO3w9lqGg29t/tfLRJpJ6iQxnVw4OnB7MoM9g=="],
 
+    "@types/bun": ["@types/bun@1.3.10", "", { "dependencies": { "bun-types": "1.3.10" } }, "sha512-0+rlrUrOrTSskibryHbvQkDOWRJwJZqZlxrUs1u4oOoTln8+WIXBPmAuCF35SWB2z4Zl3E84Nl/D0P7803nigQ=="],
+
     "@types/connect": ["@types/connect@3.4.38", "", { "dependencies": { "@types/node": "*" } }, "sha512-K6uROf1LD88uDQqJCktA4yzL1YYAK6NgfsI0v/mTgyPKWsX1CnJ0XPSDhViejru1GcRkLWb8RlzFYJRqGUbaug=="],
 
     "@types/d3-color": ["@types/d3-color@3.1.3", "", {}, "sha512-iO90scth9WAbmgv7ogoq57O9YpKmFBbmoEoCHDB2xMBY0+/KVrqAaCDyCE16dUspeOvIxFFRI+0sEtqDqy2b4A=="],
@@ -255,6 +258,8 @@
     "bun": ["bun@1.3.10", "", { "optionalDependencies": { "@oven/bun-darwin-aarch64": "1.3.10", "@oven/bun-darwin-x64": "1.3.10", "@oven/bun-darwin-x64-baseline": "1.3.10", "@oven/bun-linux-aarch64": "1.3.10", "@oven/bun-linux-aarch64-musl": "1.3.10", "@oven/bun-linux-x64": "1.3.10", "@oven/bun-linux-x64-baseline": "1.3.10", "@oven/bun-linux-x64-musl": "1.3.10", "@oven/bun-linux-x64-musl-baseline": "1.3.10", "@oven/bun-windows-aarch64": "1.3.10", "@oven/bun-windows-x64": "1.3.10", "@oven/bun-windows-x64-baseline": "1.3.10" }, "os": [ "linux", "win32", "darwin", ], "cpu": [ "x64", "arm64", ], "bin": { "bun": "bin/bun.exe", "bunx": "bin/bunx.exe" } }, "sha512-S/CXaXXIyA4CMjdMkYQ4T2YMqnAn4s0ysD3mlsY4bUiOCqGlv28zck4Wd4H4kpvbekx15S9mUeLQ7Uxd0tYTLA=="],
 
     "bun-plugin-tailwind": ["bun-plugin-tailwind@0.1.2", "", { "peerDependencies": { "bun": ">=1.0.0" } }, "sha512-41jNC1tZRSK3s1o7pTNrLuQG8kL/0vR/JgiTmZAJ1eHwe0w5j6HFPKeqEk0WAD13jfrUC7+ULuewFBBCoADPpg=="],
+
+    "bun-types": ["bun-types@1.3.10", "", { "dependencies": { "@types/node": "*" } }, "sha512-tcpfCCl6XWo6nCVnpcVrxQ+9AYN1iqMIzgrSKYMB/fjLtV2eyAVEg7AxQJuCq/26R6HpKWykQXuSOq/21RYcbg=="],
 
     "bytes": ["bytes@3.1.2", "", {}, "sha512-/Nf7TyzTx6S3yRJObOAV7956r8cr2+Oj8AC5dt8wSP3BQAoeX58NoHyCU8P8zGkNXStjTSi6fzO6F0pBdcYbEg=="],
 

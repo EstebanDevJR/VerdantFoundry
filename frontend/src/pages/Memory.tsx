@@ -45,10 +45,7 @@ export default function Memory() {
   const handleDelete = async () => {
     if (!selectedMemory) return;
     try {
-      await fetch(`${import.meta.env?.VITE_API_URL || 'http://localhost:4000/api'}/memory/${selectedMemory.id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('vf_access_token')}` },
-      });
+      await memoryApi.remove(selectedMemory.id);
       setMemories(prev => prev.filter(m => m.id !== selectedMemory.id));
       addNotification({ title: "Memory Deleted", message: `${selectedMemory.title} removed.`, type: "warning" });
       setSelectedMemory(null);
@@ -65,14 +62,33 @@ export default function Memory() {
     });
   };
 
-  const allTags = Array.from(new Set(memories.flatMap((m) => m.tags)));
+  const [searchResults, setSearchResults] = useState<any[] | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
 
-  const filteredMemories = memories.filter((m) => {
-    const matchesSearch =
-      m.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.content.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesTag = activeTag ? m.tags.includes(activeTag) : true;
-    return matchesSearch && matchesTag;
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults(null);
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const results = await memoryApi.search(searchQuery, activeTag ? [activeTag] : undefined, 20) as any[];
+        setSearchResults(Array.isArray(results) ? results : []);
+      } catch {
+        setSearchResults(null);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [searchQuery, activeTag]);
+
+  const allTags = Array.from(new Set(memories.flatMap((m) => m.tags ?? [])));
+
+  const filteredMemories = searchResults ?? memories.filter((m) => {
+    const matchesTag = activeTag ? m.tags?.includes(activeTag) : true;
+    return matchesTag;
   });
 
   const getIconForType = (type: string) => {

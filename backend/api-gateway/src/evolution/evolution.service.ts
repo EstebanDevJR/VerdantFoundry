@@ -129,8 +129,29 @@ export class EvolutionService {
   }
 
   async getVersions(userId: string) {
-    return [
-      { version: 'v1.0', date: new Date().toISOString(), author: 'System', changes: 'Initial release' },
-    ];
+    const versions = await this.prisma.version.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: {
+        id: true,
+        entityType: true,
+        entityId: true,
+        version: true,
+        label: true,
+        changeSummary: true,
+        createdAt: true,
+        user: { select: { firstName: true, lastName: true, email: true } },
+      },
+    });
+    return versions.map((v) => ({
+      id: v.id,
+      version: v.label ?? `v${v.version}.0`,
+      entityType: v.entityType,
+      entityId: v.entityId,
+      date: v.createdAt.toISOString(),
+      author: v.user?.firstName ? `${v.user.firstName} ${v.user.lastName ?? ''}`.trim() : v.user?.email ?? 'System',
+      changes: v.changeSummary ?? 'No description',
+    }));
   }
 }

@@ -74,7 +74,7 @@ export class InternalController {
     @Param('id') id: string,
     @Body() body: { reportContent: string; status?: string },
   ) {
-    await this.prisma.research.update({
+    const research = await this.prisma.research.update({
       where: { id },
       data: {
         reportContent: body.reportContent,
@@ -82,7 +82,54 @@ export class InternalController {
         completedAt: new Date(),
       },
     });
+
+    const completePayload = {
+      researchId: id,
+      event: 'complete',
+      payload: { reportContent: body.reportContent, status: body.status ?? 'completed' },
+    };
+    await this.redis.publish(RESEARCH_EVENTS_CHANNEL, JSON.stringify(completePayload));
+
+    if (body.status !== 'failed' && body.reportContent) {
+      this.indexResearchAsync(id, research.query, body.reportContent).catch(() => {});
+
+      await this.prisma.version.create({
+        data: {
+          entityType: 'research',
+          entityId: id,
+          version: 1,
+          label: 'v1.0',
+          snapshot: {
+            query: research.query,
+            reportContent: body.reportContent,
+            depth: research.depth,
+            focus: research.focus,
+            status: body.status ?? 'completed',
+          },
+          changeSummary: 'Initial research completion',
+          userId: research.userId,
+        },
+      }).catch(() => {});
+    }
+
     return { ok: true };
+  }
+
+  private async indexResearchAsync(researchId: string, query: string, content: string) {
+    const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://127.0.0.1:8000';
+    try {
+      await fetch(`${aiEngineUrl}/memory/index`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          document_id: `research_${researchId}`,
+          content: `Research Query: ${query}\n\n${content}`,
+          metadata: { type: 'research', query },
+        }),
+      });
+    } catch {
+      // best-effort
+    }
   }
 
   @Patch('research/:id/fail')

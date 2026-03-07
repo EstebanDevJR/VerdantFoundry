@@ -17,6 +17,7 @@ import { InternalModule } from './internal/internal.module';
 import { WebsocketModule } from './websocket/websocket.module';
 import { UsersModule } from './users/users.module';
 import { JwtOrApiKeyAuthGuard } from './auth/guards/jwt-or-apikey.guard';
+import { VersioningModule } from './versioning/versioning.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -37,6 +38,7 @@ import { HealthController } from './health.controller';
     EvolutionModule,
     InternalModule,
     WebsocketModule,
+    VersioningModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: JwtOrApiKeyAuthGuard }],

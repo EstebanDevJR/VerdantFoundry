@@ -28,6 +28,7 @@ model User {
   reports        Report[]
   feedbacks      Feedback[]
   apiKeys        ApiKey[]
+  versions       Version[]
 }
 
 model Workspace {
@@ -189,6 +190,23 @@ model Report {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Version {
+  id           String   @id @default(cuid())
+  entityType   String   @map("entity_type") // research | report | agent | tool | experiment
+  entityId     String   @map("entity_id")
+  version      Int      @default(1)
+  label        String?  // e.g. "v1.0", "Draft 2"
+  snapshot     Json     // full JSON snapshot of the entity at this version
+  changeSummary String?  @map("change_summary") @db.Text
+  userId       String   @map("user_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([entityType, entityId, version])
+  @@index([entityType, entityId])
 }
 
 model Feedback {

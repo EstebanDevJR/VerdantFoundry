@@ -205,11 +205,16 @@ export const memory = {
     return api(`/memory?${params.toString()}`);
   },
   getGraph: () => api<{ nodes: unknown[]; edges: unknown[] }>('/memory/graph'),
+  getStats: () => api<{ nodeCount: number; sizeBytes: number; sizeMB: string }>('/memory/stats'),
   search: (query: string, tags?: string[], limit?: number) =>
     api('/memory/search', {
       method: 'POST',
       body: JSON.stringify({ query, tags, limit }),
     }),
+  createDocument: (data: { title: string; type: string; content: string; tags?: string[] }) =>
+    api('/memory/documents', { method: 'POST', body: JSON.stringify(data) }),
+  get: (id: string) => api(`/memory/${id}`),
+  remove: (id: string) => api(`/memory/${id}`, { method: 'DELETE' }),
 };
 
 // Research
@@ -219,24 +224,55 @@ export const research = {
       method: 'POST',
       body: JSON.stringify({ query, depth, focus }),
     }),
-  list: () => api<Array<{ id: string; query: string; status: string; startedAt: string }>>('/research'),
+  list: (limit?: number) =>
+    api<Array<{ id: string; query: string; depth: string; focus: string; status: string; startedAt: string; completedAt: string | null }>>(
+      limit ? `/research?limit=${limit}` : '/research'
+    ),
   get: (id: string) => api(`/research/${id}`),
   getReport: (id: string) => api<{ content: string; metadata?: unknown }>(`/research/${id}/report`),
+  updateReport: (id: string, content: string) =>
+    api<{ content: string; metadata?: unknown }>(`/research/${id}/report`, {
+      method: 'PATCH',
+      body: JSON.stringify({ content }),
+    }),
   getLogs: (id: string) =>
     api<Array<{ id: string; timestamp: string; agent: string; message: string; type: string }>>(
       `/research/${id}/logs`
+    ),
+  search: (query: string, limit?: number) =>
+    api<Array<{ id: string; query: string; content: string; score: number | null; status: string; startedAt: string }>>(
+      '/research/search',
+      { method: 'POST', body: JSON.stringify({ query, limit }) },
     ),
 };
 
 // Reports
 export const reports = {
-  list: () => api<Array<{ id: string; title: string; blocks: unknown; themeId: string | null; layoutId: string | null; createdAt: string }>>('/reports'),
-  get: (id: string) => api(`/reports/${id}`),
+  list: () =>
+    api<Array<{ id: string; title: string; blocks: unknown; themeId: string | null; layoutId: string | null; createdAt: string; updatedAt: string }>>('/reports'),
+  get: (id: string) =>
+    api<{ id: string; title: string; blocks: Array<{ type: string; content: string; meta?: Record<string, unknown> }>; themeId: string | null; layoutId: string | null }>(`/reports/${id}`),
   create: (data: { title: string; blocks?: unknown[]; themeId?: string; layoutId?: string }) =>
     api('/reports', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: { title?: string; blocks?: unknown[]; themeId?: string; layoutId?: string }) =>
+    api(`/reports/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id: string) => api(`/reports/${id}`, { method: 'DELETE' }),
   createFromResearch: (researchId: string) =>
     api<{ id: string; title: string }>(`/reports/from-research/${researchId}`, { method: 'POST' }),
-  exportPdf: (id: string) => `${API_BASE}/reports/${id}/export`,
+  updateBlock: (id: string, blockIndex: number, block: { type: string; content: string; meta?: Record<string, unknown> }) =>
+    api(`/reports/${id}/blocks/${blockIndex}`, { method: 'PATCH', body: JSON.stringify(block) }),
+  addBlock: (id: string, block: { type: string; content: string; meta?: Record<string, unknown>; afterIndex?: number }) =>
+    api(`/reports/${id}/blocks`, { method: 'POST', body: JSON.stringify(block) }),
+  removeBlock: (id: string, blockIndex: number) =>
+    api(`/reports/${id}/blocks/${blockIndex}`, { method: 'DELETE' }),
+  reorderBlocks: (id: string, fromIndex: number, toIndex: number) =>
+    api(`/reports/${id}/blocks/reorder`, { method: 'PATCH', body: JSON.stringify({ fromIndex, toIndex }) }),
+  getThemes: () =>
+    api<Array<{ id: string; name: string; colors: string[] }>>('/reports/themes'),
+  getLayouts: () =>
+    api<Array<{ id: string; name: string; columns: number }>>('/reports/layouts'),
+  exportUrl: (id: string, format: 'pdf' | 'html' | 'markdown' | 'docx' = 'pdf') =>
+    `${API_BASE}/reports/${id}/export?format=${format}`,
 };
 
 // Evolution
@@ -260,10 +296,33 @@ export const evolution = {
     api('/evolution/experiments', { method: 'POST', body: JSON.stringify(data) }),
   runExperiment: (id: string) =>
     api(`/evolution/experiments/${id}/run`, { method: 'POST' }),
+  getVersions: () =>
+    api<Array<{ id: string; version: string; entityType: string; entityId: string; date: string; author: string; changes: string }>>('/evolution/versions'),
+};
+
+// Versioning
+export const versions = {
+  getHistory: (limit?: number) =>
+    api<Array<{ id: string; entityType: string; entityId: string; version: number; label: string; changeSummary: string; createdAt: string }>>(
+      `/versions/history${limit ? `?limit=${limit}` : ''}`
+    ),
+  getVersions: (entityType: string, entityId: string) =>
+    api<Array<{ id: string; version: number; label: string; changeSummary: string; createdAt: string; user: { id: string; firstName: string; lastName: string; email: string } }>>(
+      `/versions/${entityType}/${entityId}`
+    ),
+  getVersion: (entityType: string, entityId: string, version: number) =>
+    api<{ id: string; version: number; label: string; snapshot: unknown; changeSummary: string; createdAt: string }>(
+      `/versions/${entityType}/${entityId}/${version}`
+    ),
+  diff: (entityType: string, entityId: string, from: number, to: number) =>
+    api<{ from: unknown; to: unknown; fromSnapshot: unknown; toSnapshot: unknown }>(
+      `/versions/${entityType}/${entityId}/diff?from=${from}&to=${to}`
+    ),
 };
 
 // Users - API Keys
 export const users = {
+  getProfile: () => api<{ id: string; email: string; firstName: string | null; lastName: string | null; role: string }>('/users/me'),
   getApiKeys: () =>
     api<Array<{ id: string; name: string; key: string; prefix: string; lastUsed: string | null; createdAt: string }>>('/users/me/api-keys'),
   createApiKey: (name: string, prefix?: 'vf_live' | 'vf_test') =>
@@ -273,3 +332,20 @@ export const users = {
     }),
   revokeApiKey: (id: string) => api(`/users/me/api-keys/${id}`, { method: 'DELETE' }),
 };
+
+// WebSocket helper for multiple channels
+export function createWebSocket(channel: string, data?: unknown, onEvent?: (event: string, payload: unknown) => void) {
+  const ws = new WebSocket(`${WS_BASE}/ws`);
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ event: `subscribe-${channel}`, data }));
+  };
+  ws.onmessage = (e) => {
+    try {
+      const { event, payload } = JSON.parse(e.data) as { event: string; payload: unknown };
+      onEvent?.(event, payload);
+    } catch {
+      // ignore
+    }
+  };
+  return () => ws.close();
+}

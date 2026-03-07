@@ -1,6 +1,21 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { Brain, ChevronRight, ChevronDown, GitBranch, Wrench, CheckCircle2 } from 'lucide-react';
+import { Brain, ChevronRight, ChevronDown, GitBranch, Wrench, CheckCircle2, Search, FileText, BarChart3, PenTool } from 'lucide-react';
 import { useState, useMemo } from 'react';
+
+type LogEntry = {
+  id: string;
+  timestamp: string;
+  agent: string;
+  message: string;
+  type: 'info' | 'action' | 'success' | 'error';
+};
+
+type ReasoningEvent = {
+  agent: string;
+  role?: string;
+  status: string;
+  thought: string;
+};
 
 type ReasoningStep = {
   id: string;
@@ -8,16 +23,26 @@ type ReasoningStep = {
   action: string;
   details: string;
   type: 'thought' | 'tool' | 'decision' | 'result';
+  status?: 'thinking' | 'complete';
   children?: ReasoningStep[];
 };
 
+const AGENT_ICONS: Record<string, typeof Brain> = {
+  Planner: Search,
+  Researcher: FileText,
+  Analyst: BarChart3,
+  Writer: PenTool,
+  System: Brain,
+};
+
 function ReasoningNode({ step, depth = 0 }: { step: ReasoningStep; depth?: number; key?: string | number }) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
   const hasChildren = step.children && step.children.length > 0;
 
   const getIcon = () => {
+    const Icon = AGENT_ICONS[step.agent] || Brain;
     switch (step.type) {
-      case 'thought': return <Brain className="w-3.5 h-3.5 text-purple-500" />;
+      case 'thought': return <Icon className="w-3.5 h-3.5 text-purple-500" />;
       case 'tool': return <Wrench className="w-3.5 h-3.5 text-blue-500" />;
       case 'decision': return <GitBranch className="w-3.5 h-3.5 text-amber-500" />;
       case 'result': return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />;
@@ -38,15 +63,24 @@ function ReasoningNode({ step, depth = 0 }: { step: ReasoningStep; depth?: numbe
             <div className="w-4 h-4" />
           )}
         </div>
-        <div className="flex-shrink-0 mt-0.5 bg-white p-1 rounded-md border border-slate-100 shadow-sm">
+        <div className={`flex-shrink-0 mt-0.5 bg-white p-1 rounded-md border border-slate-100 shadow-sm ${step.status === 'thinking' ? 'animate-pulse ring-2 ring-primary/30' : ''}`}>
           {getIcon()}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-slate-700">{step.agent}</span>
             <span className="text-xs font-medium text-slate-900">{step.action}</span>
+            {step.status === 'thinking' && (
+              <span className="ml-auto flex items-center gap-1 text-[9px] uppercase font-bold text-primary-dark tracking-wider">
+                <span className="w-1 h-1 rounded-full bg-primary animate-pulse" />
+                Active
+              </span>
+            )}
+            {step.status === 'complete' && (
+              <CheckCircle2 className="ml-auto w-3 h-3 text-emerald-500" />
+            )}
           </div>
-          <p className="text-xs text-slate-500 mt-0.5 truncate">{step.details}</p>
+          <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{step.details}</p>
         </div>
       </div>
       
@@ -68,62 +102,97 @@ function ReasoningNode({ step, depth = 0 }: { step: ReasoningStep; depth?: numbe
   );
 }
 
-export function ThinkingVisualizer({ isRunning, logs }: { isRunning: boolean, logs?: any[] }) {
+interface ThinkingVisualizerProps {
+  isRunning: boolean;
+  logs?: LogEntry[];
+  reasoningEvents?: ReasoningEvent[];
+}
+
+export function ThinkingVisualizer({ isRunning, logs, reasoningEvents }: ThinkingVisualizerProps) {
   const reasoningSteps = useMemo(() => {
+    const steps: ReasoningStep[] = [];
+
+    if (reasoningEvents && reasoningEvents.length > 0) {
+      const agentGroups = new Map<string, ReasoningEvent[]>();
+      for (const evt of reasoningEvents) {
+        const group = agentGroups.get(evt.agent) ?? [];
+        group.push(evt);
+        agentGroups.set(evt.agent, group);
+      }
+
+      let idx = 0;
+      for (const [agent, events] of agentGroups) {
+        const latestEvent = events[events.length - 1];
+        const children: ReasoningStep[] = events.map((evt, i) => ({
+          id: `${idx}-${i}`,
+          agent: evt.agent,
+          action: evt.status === 'thinking' ? 'Processing...' : 'Completed',
+          details: evt.thought,
+          type: evt.status === 'thinking' ? 'thought' as const : 'result' as const,
+          status: evt.status as 'thinking' | 'complete',
+        }));
+
+        steps.push({
+          id: `agent-${idx}`,
+          agent,
+          action: latestEvent.role ?? agent,
+          details: latestEvent.thought,
+          type: latestEvent.status === 'complete' ? 'result' : 'thought',
+          status: latestEvent.status as 'thinking' | 'complete',
+          children: children.length > 1 ? children : undefined,
+        });
+        idx++;
+      }
+      return steps;
+    }
+
     if (!logs || logs.length === 0) return [];
     
-    const steps: ReasoningStep[] = [];
-    
-    if (logs.length > 0) {
-      steps.push({
-        id: '1',
-        agent: 'Alpha-7',
-        action: 'Analyze Query',
-        details: 'Breaking down the user query into search parameters.',
-        type: 'thought',
-        children: logs.length > 1 ? [
-          { id: '1-1', agent: 'Alpha-7', action: 'Extract Entities', details: 'Identified key parameters.', type: 'thought' },
-          { id: '1-2', agent: 'Alpha-7', action: 'Formulate Search', details: 'Created search variants.', type: 'decision' }
-        ] : []
-      });
+    const agentLogs = new Map<string, LogEntry[]>();
+    for (const log of logs) {
+      const group = agentLogs.get(log.agent) ?? [];
+      group.push(log);
+      agentLogs.set(log.agent, group);
     }
 
-    if (logs.length > 5) {
-      steps.push({
-        id: '2',
-        agent: 'Alpha-7',
-        action: 'Execute Search',
-        details: 'Using Web Search API to gather recent articles.',
-        type: 'tool',
-        children: logs.length > 6 ? [
-          { id: '2-1', agent: 'System', action: 'Web Search API', details: 'Querying data sources...', type: 'tool' },
-          { id: '2-2', agent: 'System', action: 'Parse Results', details: 'Retrieved relevant sources.', type: 'result' }
-        ] : []
-      });
-    }
+    let stepIdx = 0;
+    for (const [agent, agentLogEntries] of agentLogs) {
+      const isComplete = agentLogEntries.some(l => l.type === 'success');
+      const lastLog = agentLogEntries[agentLogEntries.length - 1];
 
-    if (logs.length > 10) {
+      const children: ReasoningStep[] = agentLogEntries.map((l, i) => ({
+        id: `${stepIdx}-${i}`,
+        agent: l.agent,
+        action: l.type === 'action' ? 'Processing' : l.type === 'success' ? 'Done' : l.type === 'error' ? 'Error' : 'Info',
+        details: l.message,
+        type: l.type === 'error' ? 'decision' as const : l.type === 'success' ? 'result' as const : l.type === 'action' ? 'tool' as const : 'thought' as const,
+      }));
+
       steps.push({
-        id: '3',
-        agent: 'Beta-2',
-        action: 'Synthesize Findings',
-        details: 'Cross-referencing sources to identify consensus.',
-        type: 'thought',
-        children: logs.length > 11 ? [
-          { id: '3-1', agent: 'Beta-2', action: 'Identify Trend', details: 'Consensus found in data.', type: 'decision' },
-          { id: '3-2', agent: 'Beta-2', action: 'Draft Summary', details: 'Generating executive summary points.', type: 'result' }
-        ] : []
+        id: `step-${stepIdx}`,
+        agent,
+        action: agent === 'System' ? 'Pipeline Orchestration' :
+               agent === 'Planner' ? 'Research Planning' :
+               agent === 'Researcher' ? 'Information Gathering' :
+               agent === 'Analyst' ? 'Critical Analysis' :
+               agent === 'Writer' ? 'Report Synthesis' :
+               'Processing',
+        details: lastLog.message,
+        type: isComplete ? 'result' : 'thought',
+        status: isComplete ? 'complete' : isRunning ? 'thinking' : undefined,
+        children: children.length > 1 ? children : undefined,
       });
+      stepIdx++;
     }
 
     return steps;
-  }, [logs]);
+  }, [logs, reasoningEvents, isRunning]);
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 mb-4 px-2">
         <Brain className="w-4 h-4 text-primary" />
-        <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">Cognitive Trace</h3>
+        <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">Multi-Agent Trace</h3>
         {isRunning && (
           <span className="ml-auto flex items-center gap-1.5 text-[10px] uppercase font-bold text-primary-dark tracking-wider">
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
@@ -136,7 +205,8 @@ export function ThinkingVisualizer({ isRunning, logs }: { isRunning: boolean, lo
         {!isRunning && (!logs || logs.length === 0) ? (
           <div className="h-full flex flex-col items-center justify-center text-slate-400 text-sm text-center px-4">
             <Brain className="w-8 h-8 mb-3 opacity-20" />
-            <p>Agent reasoning will appear here during execution.</p>
+            <p>Multi-agent reasoning will appear here.</p>
+            <p className="text-xs mt-1 opacity-60">Planner → Researcher → Analyst → Writer</p>
           </div>
         ) : (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-1">
@@ -145,7 +215,7 @@ export function ThinkingVisualizer({ isRunning, logs }: { isRunning: boolean, lo
                 key={step.id}
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.2 }}
+                transition={{ delay: i * 0.15 }}
               >
                 <ReasoningNode step={step} />
               </motion.div>

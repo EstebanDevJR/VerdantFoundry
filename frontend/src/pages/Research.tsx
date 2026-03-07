@@ -1,11 +1,11 @@
 import { PageWrapper } from '@/components/layout/PageWrapper';
-import { Bot, Play, Search, Settings2, SquareTerminal, Download, Copy, CheckCircle2, Pause, Square, FastForward, Rewind, Brain, Clock, History, SlidersHorizontal, FileText, ChevronRight, Sparkles } from 'lucide-react';
+import { Bot, Play, Search, Settings2, SquareTerminal, Download, Copy, CheckCircle2, Pause, Square, FastForward, Rewind, Brain, Clock, History, SlidersHorizontal, FileText, ChevronRight, Sparkles, Edit3, Save, X, FileDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import React, { useState, useEffect, useRef } from 'react';
 import { ThinkingVisualizer } from '@/components/research/ThinkingVisualizer';
 import { ExecutionTimeline } from '@/components/research/ExecutionTimeline';
 import { useStore } from '@/store/useStore';
-import { research as researchApi, createResearchSocket } from '@/lib/api';
+import { research as researchApi, reports as reportsApi, createResearchSocket } from '@/lib/api';
 
 type LogEntry = {
   id: string;
@@ -15,11 +15,19 @@ type LogEntry = {
   type: 'info' | 'action' | 'success' | 'error';
 };
 
+type ReasoningEvent = {
+  agent: string;
+  role?: string;
+  status: string;
+  thought: string;
+};
+
 export default function Research() {
   const { addNotification } = useStore();
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<'idle' | 'running' | 'paused' | 'completed' | 'replay'>('idle');
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [reasoningEvents, setReasoningEvents] = useState<ReasoningEvent[]>([]);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [activeTab, setActiveTab] = useState<'cognitive' | 'timeline'>('cognitive');
   const [showConfig, setShowConfig] = useState(false);
@@ -27,7 +35,10 @@ export default function Research() {
   const [focus, setFocus] = useState<'general' | 'market' | 'technical'>('general');
   const [researchId, setResearchId] = useState<string | null>(null);
   const [reportContent, setReportContent] = useState<string | null>(null);
-  const [pastResearches, setPastResearches] = useState<Array<{ id: string; query: string; status: string; startedAt: string }>>([]);
+  const [pastResearches, setPastResearches] = useState<Array<{ id: string; query: string; depth: string; focus: string; status: string; startedAt: string }>>([]);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState('');
+  const [showExportMenu, setShowExportMenu] = useState(false);
   
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -41,11 +52,12 @@ export default function Research() {
     setStatus('running');
     setShowConfig(false);
     setReportContent(null);
+    setReasoningEvents([]);
     setLogs([{
       id: Date.now().toString(),
       timestamp: new Date().toLocaleTimeString(),
       agent: 'System',
-      message: `Initializing ${depth} research protocol with ${focus} focus...`,
+      message: `Initializing ${depth} multi-agent research protocol with ${focus} focus...`,
       type: 'info'
     }]);
     try {
@@ -102,6 +114,15 @@ export default function Research() {
           message: payload?.message || '',
           type: payload?.type || 'info'
         }]);
+      } else if (event === 'reasoning') {
+        setReasoningEvents(prev => [...prev, {
+          agent: payload?.agent || 'System',
+          role: payload?.role,
+          status: payload?.status || 'thinking',
+          thought: payload?.thought || '',
+        }]);
+      } else if (event === 'timeline') {
+        // timeline events are handled by ExecutionTimeline
       } else if (event === 'complete') {
         if (payload?.reportContent) setReportContent(payload.reportContent);
         setStatus('completed');
@@ -109,7 +130,7 @@ export default function Research() {
           id: Date.now().toString(),
           timestamp: new Date().toLocaleTimeString(),
           agent: 'System',
-          message: payload?.status === 'failed' ? 'Research failed.' : 'Research synthesis complete.',
+          message: payload?.status === 'failed' ? 'Research failed.' : 'Multi-agent synthesis complete.',
           type: payload?.status === 'failed' ? 'error' : 'success'
         }]);
         researchApi.list().then(setPastResearches).catch(() => {});
@@ -150,6 +171,9 @@ export default function Research() {
   }, [logs]);
 
   const handleCopy = () => {
+    if (reportContent) {
+      navigator.clipboard.writeText(reportContent).catch(() => {});
+    }
     addNotification({
       title: "Copied to Clipboard",
       message: "The research report has been copied to your clipboard.",
@@ -157,19 +181,47 @@ export default function Research() {
     });
   };
 
-  const handleExport = () => {
-    addNotification({
-      title: "Exporting Report",
-      message: "Preparing your research report for download...",
-      type: "info"
-    });
-    setTimeout(() => {
-      addNotification({
-        title: "Export Complete",
-        message: "Your report has been successfully exported as a PDF.",
-        type: "success"
-      });
-    }, 2000);
+  const handleExport = async (format: 'pdf' | 'html' | 'markdown' | 'docx') => {
+    setShowExportMenu(false);
+    if (!researchId) return;
+
+    if (format === 'markdown' && reportContent) {
+      const blob = new Blob([reportContent], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `research-${researchId}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+      addNotification({ title: "Export Complete", message: `Report exported as Markdown.`, type: "success" });
+      return;
+    }
+
+    try {
+      const report = await reportsApi.createFromResearch(researchId);
+      const exportUrl = reportsApi.exportUrl(report.id, format);
+      window.open(exportUrl, '_blank');
+      addNotification({ title: "Export Complete", message: `Report exported as ${format.toUpperCase()}.`, type: "success" });
+    } catch (err) {
+      addNotification({ title: "Export Failed", message: (err as Error).message, type: "error" });
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!researchId) return;
+    try {
+      await researchApi.updateReport(researchId, editContent);
+      setReportContent(editContent);
+      setIsEditing(false);
+      addNotification({ title: "Report Updated", message: "Your edits have been saved with version tracking.", type: "success" });
+    } catch (err) {
+      addNotification({ title: "Save Failed", message: (err as Error).message, type: "error" });
+    }
+  };
+
+  const startEditing = () => {
+    setEditContent(reportContent ?? '');
+    setIsEditing(true);
   };
 
   return (
@@ -191,7 +243,7 @@ export default function Research() {
               </span>
             )}
           </h1>
-          <p className="text-slate-500">Deploy autonomous agents to gather, analyze, and synthesize information.</p>
+          <p className="text-slate-500">Multi-agent pipeline: Planner → Researcher → Analyst → Writer</p>
         </div>
         
         <div className="flex gap-2">
@@ -218,7 +270,7 @@ export default function Research() {
                   <Play className="w-5 h-5" />
                 </button>
               ) : null}
-              <button onClick={() => { setStatus('idle'); setLogs([]); setQuery(''); }} className="p-2 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition-colors shadow-sm">
+              <button onClick={() => { setStatus('idle'); setLogs([]); setQuery(''); setReasoningEvents([]); setReportContent(null); }} className="p-2 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition-colors shadow-sm">
                 <Square className="w-5 h-5" />
               </button>
             </>
@@ -238,6 +290,7 @@ export default function Research() {
                 <div key={item.id} onClick={async () => {
                   setResearchId(item.id);
                   setQuery(item.query);
+                  setReasoningEvents([]);
                   try {
                     const report = await researchApi.getReport(item.id);
                     if (report.content) { setReportContent(report.content); setStatus('completed'); }
@@ -247,6 +300,10 @@ export default function Research() {
                 }} className="p-3 rounded-xl border border-transparent hover:border-slate-200 hover:bg-white/60 cursor-pointer transition-all group">
                   <div className="flex items-start justify-between mb-1">
                     <h4 className="text-sm font-semibold text-slate-700 group-hover:text-primary-dark line-clamp-2">{item.query.slice(0, 60)}</h4>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[9px] font-bold uppercase text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{item.depth}</span>
+                    <span className="text-[9px] font-bold uppercase text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{item.focus}</span>
                   </div>
                   <div className="flex items-center justify-between mt-2">
                     <span className="text-[10px] text-slate-400">{new Date(item.startedAt).toLocaleDateString()}</span>
@@ -306,7 +363,6 @@ export default function Research() {
                 </div>
               </div>
 
-              {/* Configuration Dropdown */}
               <AnimatePresence>
                 {showConfig && (
                   <motion.div
@@ -356,7 +412,6 @@ export default function Research() {
           {/* Dynamic Content Area */}
           <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0">
             
-            {/* Left: Cognitive Trace / Terminal (Only show when running or completed) */}
             {(status !== 'idle' || logs.length > 0) && (
               <motion.div
                 initial={{ opacity: 0, x: -20 }}
@@ -380,7 +435,7 @@ export default function Research() {
                   </div>
                   <div className="flex-1 overflow-hidden">
                     {activeTab === 'cognitive' ? (
-                      <ThinkingVisualizer isRunning={status === 'running' || status === 'replay'} logs={logs} />
+                      <ThinkingVisualizer isRunning={status === 'running' || status === 'replay'} logs={logs} reasoningEvents={reasoningEvents} />
                     ) : (
                       <ExecutionTimeline status={status} logs={logs} />
                     )}
@@ -393,14 +448,22 @@ export default function Research() {
                       <SquareTerminal className="w-3.5 h-3.5" />
                       <span className="font-semibold tracking-wider uppercase">Console</span>
                     </div>
+                    <span className="text-[9px] text-slate-600">{logs.length} events</span>
                   </div>
                   <div className="flex-1 overflow-y-auto p-3 space-y-1.5 custom-scrollbar">
                     <AnimatePresence initial={false}>
                       {logs.map((log) => (
                         <motion.div key={log.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="flex gap-2">
                           <span className="text-slate-600 shrink-0">[{log.timestamp}]</span>
-                          <span className={`shrink-0 font-semibold ${log.agent === 'System' ? 'text-purple-400' : 'text-blue-400'}`}>[{log.agent}]</span>
-                          <span className={`${log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-emerald-400' : 'text-slate-300'}`}>{log.message}</span>
+                          <span className={`shrink-0 font-semibold ${
+                            log.agent === 'System' ? 'text-purple-400' :
+                            log.agent === 'Planner' ? 'text-cyan-400' :
+                            log.agent === 'Researcher' ? 'text-blue-400' :
+                            log.agent === 'Analyst' ? 'text-amber-400' :
+                            log.agent === 'Writer' ? 'text-emerald-400' :
+                            'text-blue-400'
+                          }`}>[{log.agent}]</span>
+                          <span className={`${log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-emerald-400' : log.type === 'action' ? 'text-amber-300' : 'text-slate-300'}`}>{log.message}</span>
                         </motion.div>
                       ))}
                     </AnimatePresence>
@@ -428,6 +491,33 @@ export default function Research() {
                   Research Report
                 </h2>
                 <div className="flex gap-2">
+                  {reportContent && !isEditing && (
+                    <button 
+                      onClick={startEditing}
+                      className="p-2 rounded-lg text-slate-500 hover:text-primary-dark hover:bg-primary/10 transition-colors" 
+                      title="Edit Report"
+                    >
+                      <Edit3 className="w-5 h-5" />
+                    </button>
+                  )}
+                  {isEditing && (
+                    <>
+                      <button 
+                        onClick={handleSaveEdit}
+                        className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors" 
+                        title="Save Changes"
+                      >
+                        <Save className="w-5 h-5" />
+                      </button>
+                      <button 
+                        onClick={() => setIsEditing(false)}
+                        className="p-2 rounded-lg text-red-500 hover:bg-red-50 transition-colors" 
+                        title="Cancel Edit"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </>
+                  )}
                   <button 
                     onClick={handleCopy}
                     className="p-2 rounded-lg text-slate-500 hover:text-primary-dark hover:bg-primary/10 transition-colors" 
@@ -435,13 +525,29 @@ export default function Research() {
                   >
                     <Copy className="w-5 h-5" />
                   </button>
-                  <button 
-                    onClick={handleExport}
-                    className="p-2 rounded-lg text-slate-500 hover:text-primary-dark hover:bg-primary/10 transition-colors" 
-                    title="Export as PDF"
-                  >
-                    <Download className="w-5 h-5" />
-                  </button>
+                  <div className="relative">
+                    <button 
+                      onClick={() => setShowExportMenu(!showExportMenu)}
+                      className="p-2 rounded-lg text-slate-500 hover:text-primary-dark hover:bg-primary/10 transition-colors" 
+                      title="Export Report"
+                    >
+                      <FileDown className="w-5 h-5" />
+                    </button>
+                    {showExportMenu && (
+                      <div className="absolute right-0 top-full mt-1 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50 min-w-[160px]">
+                        {(['pdf', 'html', 'markdown', 'docx'] as const).map((fmt) => (
+                          <button
+                            key={fmt}
+                            onClick={() => handleExport(fmt)}
+                            className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                          >
+                            <Download className="w-3.5 h-3.5 text-slate-400" />
+                            Export as {fmt.toUpperCase()}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               
@@ -452,7 +558,7 @@ export default function Research() {
                       <Search className="w-10 h-10 text-slate-300" />
                     </div>
                     <h3 className="text-lg font-semibold text-slate-700 mb-2">Ready to Research</h3>
-                    <p className="text-center max-w-md">Enter a query above to deploy agents. They will gather data, analyze sources, and synthesize a comprehensive report here.</p>
+                    <p className="text-center max-w-md">Enter a query above to deploy a multi-agent pipeline. Four specialized agents will plan, research, analyze, and write a comprehensive report.</p>
                   </div>
                 ) : status === 'running' || status === 'paused' || status === 'replay' ? (
                   <div className="space-y-8 max-w-3xl mx-auto w-full py-8">
@@ -470,9 +576,23 @@ export default function Research() {
                         <div className="absolute inset-0 border-4 border-primary/20 rounded-full animate-ping" />
                         <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin relative z-10" />
                       </div>
-                      <p className="text-sm font-medium text-slate-500 animate-pulse">Agents are synthesizing data...</p>
+                      <p className="text-sm font-medium text-slate-500 animate-pulse">Multi-agent pipeline synthesizing...</p>
+                      <div className="flex gap-2 text-xs text-slate-400">
+                        {['Planner', 'Researcher', 'Analyst', 'Writer'].map((agent) => (
+                          <span key={agent} className="px-2 py-0.5 rounded bg-slate-100">{agent}</span>
+                        ))}
+                      </div>
                     </div>
                   </div>
+                ) : isEditing ? (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-3xl mx-auto py-4 h-full">
+                    <textarea
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      className="w-full h-full min-h-[400px] bg-slate-50 border border-slate-200 rounded-xl p-4 font-mono text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                      placeholder="Edit your research report in Markdown..."
+                    />
+                  </motion.div>
                 ) : (
                   <motion.div 
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }}
@@ -506,8 +626,11 @@ function renderMarkdown(md: string): string {
     .replace(/^# (.*$)/gim, '<h1>$1</h1>')
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/^> (.*$)/gim, '<blockquote>$1</blockquote>')
     .replace(/^- (.*$)/gim, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+    .replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>')
+    .replace(/<\/ul>\s*<ul>/g, '')
     .replace(/\n{2,}/g, '</p><p>')
     .replace(/\n/g, '<br>')
     .replace(/^(.+)$/gm, (m) => m.startsWith('<') ? m : `<p>${m}</p>`);

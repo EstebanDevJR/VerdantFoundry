@@ -1,28 +1,28 @@
-import { useState, useEffect, useCallback } from 'react';
-import { auth, dashboard as dashboardApi } from '@/lib/api';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { auth, dashboard as dashboardApi, createWebSocket } from '@/lib/api';
 
-/**
- * Hook to fetch dashboard stats from API.
- * Falls back to mock data when not authenticated or on API error.
- */
 export function useDashboardStats() {
   const [data, setData] = useState<{
     activeAgents: string;
     researchTasks: string;
     memoryNodes: string;
     systemLoad: string;
+    totalAgents?: string;
+    runningResearch?: string;
+    toolCount?: string;
+    reportCount?: string;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [useMock, setUseMock] = useState(false);
+  const cleanupRef = useRef<(() => void) | null>(null);
 
   const fetchData = useCallback(async () => {
-    if (!auth.isAuthenticated() || useMock) {
+    if (!auth.isAuthenticated()) {
       setData({
-        activeAgents: '12',
-        researchTasks: '1,492',
-        memoryNodes: '8.4M',
-        systemLoad: '24%',
+        activeAgents: '0',
+        researchTasks: '0',
+        memoryNodes: '0',
+        systemLoad: '5%',
       });
       setLoading(false);
       return;
@@ -34,19 +34,85 @@ export function useDashboardStats() {
     } catch (e) {
       setError((e as Error).message);
       setData({
-        activeAgents: '12',
-        researchTasks: '1,492',
-        memoryNodes: '8.4M',
-        systemLoad: '24%',
+        activeAgents: '0',
+        researchTasks: '0',
+        memoryNodes: '0',
+        systemLoad: '0%',
       });
     } finally {
       setLoading(false);
     }
-  }, [useMock]);
+  }, []);
 
   useEffect(() => {
     fetchData();
+
+    if (auth.isAuthenticated()) {
+      cleanupRef.current = createWebSocket('dashboard', undefined, (event, payload) => {
+        if (event === 'metrics' && payload) {
+          setData(payload as typeof data);
+        }
+      });
+    }
+
+    return () => {
+      cleanupRef.current?.();
+    };
   }, [fetchData]);
 
   return { data, loading, error, refetch: fetchData };
+}
+
+export function useDashboardActivity(limit = 10) {
+  const [data, setData] = useState<Array<{ id: string; task: string; status: string; time: string; agent: string; depth?: string; focus?: string }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!auth.isAuthenticated()) {
+      setLoading(false);
+      return;
+    }
+    dashboardApi.getActivity(limit)
+      .then(setData)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [limit]);
+
+  return { data, loading };
+}
+
+export function useDashboardPerformance() {
+  const [data, setData] = useState<Array<{ time: string; load: number; memory: number; researches?: number }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!auth.isAuthenticated()) {
+      setLoading(false);
+      return;
+    }
+    dashboardApi.getPerformance()
+      .then(setData)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  return { data, loading };
+}
+
+export function useDashboardHealth() {
+  const [data, setData] = useState<{ health: number; apiLatency: string; memoryUsage: string; uptime: string; totalResearches?: number } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!auth.isAuthenticated()) {
+      setLoading(false);
+      return;
+    }
+    dashboardApi.getHealth()
+      .then(setData)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  return { data, loading };
 }

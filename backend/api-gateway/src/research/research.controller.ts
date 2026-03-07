@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Res } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, Res } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { ResearchService } from './research.service';
 import { RedisService } from '../redis/redis.service';
@@ -27,8 +27,16 @@ export class ResearchController {
   }
 
   @Get()
-  findAll(@CurrentUser('id') userId: string) {
-    return this.researchService.findAll(userId);
+  findAll(@CurrentUser('id') userId: string, @Query('limit') limit?: string) {
+    return this.researchService.findAll(userId, limit ? parseInt(limit, 10) : 20);
+  }
+
+  @Post('search')
+  search(
+    @CurrentUser('id') userId: string,
+    @Body() body: { query: string; limit?: number },
+  ) {
+    return this.researchService.search(userId, body.query, body.limit ?? 10);
   }
 
   @Get(':id/stream')
@@ -74,6 +82,15 @@ export class ResearchController {
   @Get(':id/report')
   getReport(@Param('id') id: string, @CurrentUser('id') userId: string) {
     return this.researchService.getReport(id, userId);
+  }
+
+  @Patch(':id/report')
+  updateReport(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+    @Body() body: { content: string },
+  ) {
+    return this.researchService.updateReport(id, userId, body.content);
   }
 
   @Get(':id/logs')

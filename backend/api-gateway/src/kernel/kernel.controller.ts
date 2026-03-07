@@ -43,8 +43,8 @@ export class KernelController {
   }
 
   @Get('logs')
-  getLogs(@Query('limit') limit?: string) {
-    return this.kernelService.getLogs(limit ? parseInt(limit, 10) : 50);
+  getLogs(@CurrentUser('id') userId: string, @Query('limit') limit?: string) {
+    return this.kernelService.getLogs(userId, limit ? parseInt(limit, 10) : 50);
   }
 
   @Get('network')
@@ -53,7 +53,7 @@ export class KernelController {
   }
 
   @Get('filesystem')
-  getFilesystem() {
-    return this.kernelService.getFilesystem();
+  getFilesystem(@CurrentUser('id') userId: string) {
+    return this.kernelService.getFilesystem(userId);
   }
 }

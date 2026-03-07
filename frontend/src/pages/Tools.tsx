@@ -32,33 +32,35 @@ export default function Tools() {
   const [tools, setTools] = useState<any[]>([]);
   const [selectedTool, setSelectedTool] = useState<any | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addForm, setAddForm] = useState({ name: '', type: 'Execution', description: '' });
+  const [isAdding, setIsAdding] = useState(false);
 
-  useEffect(() => {
+  const loadTools = () => {
     toolsApi.list().then((data) => {
       setTools(data.map((t: any) => ({ ...t, icon: iconForType(t.type) })));
     }).catch(() => {});
-  }, []);
+  };
+
+  useEffect(() => { loadTools(); }, []);
 
   const handleAddTool = async () => {
-    const name = prompt("Tool name:");
-    if (!name) return;
-    const type = prompt("Tool type (External/Execution/Internal/Compute):", "Execution");
+    if (!addForm.name.trim()) return;
+    setIsAdding(true);
     try {
-      const created = await toolsApi.list(); // refresh after
-      const newTool = { name, type: type || "Execution" };
-      // Create via API - we need to add this to the api client
-      const res = await fetch(`${import.meta.env?.VITE_API_URL || 'http://localhost:4000/api'}/tools`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('vf_access_token')}` },
-        body: JSON.stringify(newTool),
+      const data = await toolsApi.create({
+        name: addForm.name,
+        type: addForm.type,
+        description: addForm.description || undefined,
       });
-      if (res.ok) {
-        const data = await res.json();
-        setTools(prev => [...prev, { ...data, icon: iconForType(data.type) }]);
-        addNotification({ title: "Tool Created", message: `${data.name} added.`, type: "success" });
-      }
+      setTools(prev => [...prev, { ...data, icon: iconForType(data.type) }]);
+      addNotification({ title: "Tool Created", message: `${data.name} added.`, type: "success" });
+      setShowAddModal(false);
+      setAddForm({ name: '', type: 'Execution', description: '' });
     } catch (err) {
       addNotification({ title: "Error", message: (err as Error).message, type: "error" });
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -117,7 +119,7 @@ export default function Tools() {
             />
           </div>
           <button 
-            onClick={handleAddTool}
+            onClick={() => setShowAddModal(true)}
             className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition-all shadow-md hover:shadow-lg"
           >
             <Plus className="w-4 h-4 text-primary-400" />
@@ -323,6 +325,86 @@ export default function Tools() {
       <AnimatePresence>
         {isEditing && selectedTool && (
           <ToolEditor tool={selectedTool} onClose={() => setIsEditing(false)} />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showAddModal && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-40"
+              onClick={() => setShowAddModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            >
+              <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-bold text-slate-900">Add New Tool</h2>
+                  <button onClick={() => setShowAddModal(false)} className="p-2 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Name</label>
+                    <input
+                      type="text"
+                      value={addForm.name}
+                      onChange={(e) => setAddForm(f => ({ ...f, name: e.target.value }))}
+                      placeholder="Tool name"
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all text-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Type</label>
+                    <select
+                      value={addForm.type}
+                      onChange={(e) => setAddForm(f => ({ ...f, type: e.target.value }))}
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all text-slate-900"
+                    >
+                      <option value="External">External</option>
+                      <option value="Execution">Execution</option>
+                      <option value="Internal">Internal</option>
+                      <option value="Compute">Compute</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Description</label>
+                    <textarea
+                      value={addForm.description}
+                      onChange={(e) => setAddForm(f => ({ ...f, description: e.target.value }))}
+                      placeholder="Describe what this tool does..."
+                      rows={4}
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:ring-2 focus:ring-primary/50 outline-none transition-all text-slate-900 resize-none"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 mt-6">
+                  <button
+                    onClick={() => setShowAddModal(false)}
+                    className="px-4 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleAddTool}
+                    disabled={isAdding || !addForm.name.trim()}
+                    className="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors shadow-md disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isAdding && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                    {isAdding ? 'Creating...' : 'Create Tool'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </PageWrapper>

@@ -36,6 +36,26 @@ export default function Settings() {
   const [apiKeys, setApiKeys] = useState<Array<{ id: string; name: string; key: string; lastUsed: string | null; createdAt: string }>>([]);
   const [apiKeysLoading, setApiKeysLoading] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+
+  useEffect(() => {
+    if (useStore.getState().isAuthenticated) {
+      setProfileLoading(true);
+      users.getProfile()
+        .then((profile) => {
+          setFirstName(profile.firstName ?? '');
+          setLastName(profile.lastName ?? '');
+          setEmail(profile.email ?? '');
+        })
+        .catch(() => {})
+        .finally(() => setProfileLoading(false));
+    } else {
+      setProfileLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'api-keys' && useStore.getState().isAuthenticated) {
@@ -65,16 +85,26 @@ export default function Settings() {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
+    try {
+      const updated = await users.updateProfile({ firstName, lastName });
+      setFirstName(updated.firstName ?? '');
+      setLastName(updated.lastName ?? '');
       addNotification({
         title: "Settings Saved",
         message: "Your profile information has been updated successfully.",
         type: "success"
       });
-    }, 1000);
+    } catch (err) {
+      addNotification({
+        title: "Error",
+        message: (err as Error).message,
+        type: "error"
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const copyToClipboard = (text: string, id: string) => {
@@ -145,7 +175,7 @@ export default function Settings() {
                       
                       <div className="flex items-center gap-6 mb-8">
                         <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center text-white text-2xl font-bold shadow-lg">
-                          JD
+                          {(firstName?.[0] ?? '').toUpperCase()}{(lastName?.[0] ?? '').toUpperCase() || '?'}
                         </div>
                         <div className="flex gap-3">
                           <button 
@@ -163,26 +193,33 @@ export default function Settings() {
                         </div>
                       </div>
 
+                      {profileLoading ? (
+                        <div className="flex items-center gap-3 py-8 justify-center">
+                          <div className="w-5 h-5 border-2 border-slate-300 border-t-primary rounded-full animate-spin" />
+                          <span className="text-sm text-slate-500">Loading profile...</span>
+                        </div>
+                      ) : (
                       <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
                           <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1.5">First Name</label>
-                            <input type="text" defaultValue="Jane" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-primary/50 outline-none transition-all text-slate-900" />
+                            <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-primary/50 outline-none transition-all text-slate-900" />
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1.5">Last Name</label>
-                            <input type="text" defaultValue="Doe" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-primary/50 outline-none transition-all text-slate-900" />
+                            <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-primary/50 outline-none transition-all text-slate-900" />
                           </div>
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-slate-700 mb-1.5">Email Address</label>
-                          <input type="email" defaultValue="jane.doe@example.com" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-primary/50 outline-none transition-all text-slate-900" />
+                          <input type="email" value={email} readOnly className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 outline-none transition-all cursor-not-allowed" />
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-slate-700 mb-1.5">Role / Title</label>
                           <input type="text" defaultValue="Lead AI Researcher" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-primary/50 outline-none transition-all text-slate-900" />
                         </div>
                       </div>
+                      )}
                     </div>
 
                     <div className="pt-6 border-t border-slate-200">

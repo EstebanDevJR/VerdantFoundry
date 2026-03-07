@@ -2,10 +2,38 @@ import { useStore } from '@/store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
 import { Bot, Activity, Bell, X, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { agents as agentsApi, kernel } from '@/lib/api';
+
+const statusColor = (status: string) => {
+  switch (status?.toLowerCase()) {
+    case 'active': return 'bg-emerald-500 animate-pulse';
+    case 'idle': return 'bg-blue-500';
+    case 'error': return 'bg-red-500';
+    default: return 'bg-slate-400';
+  }
+};
 
 export function Sidebar() {
-  const { isSidebarOpen, setSidebarOpen, addNotification } = useStore();
+  const { isSidebarOpen, setSidebarOpen, addNotification, notifications } = useStore();
   const navigate = useNavigate();
+
+  const [agentList, setAgentList] = useState<Array<{ id: string; name: string; status: string }>>([]);
+  const [agentsLoading, setAgentsLoading] = useState(false);
+  const [metrics, setMetrics] = useState<Record<string, any> | null>(null);
+
+  useEffect(() => {
+    if (!isSidebarOpen) return;
+    setAgentsLoading(true);
+    agentsApi.list()
+      .then((data) => setAgentList(data))
+      .catch(() => setAgentList([]))
+      .finally(() => setAgentsLoading(false));
+
+    kernel.getMetrics()
+      .then((data) => setMetrics(data))
+      .catch(() => setMetrics(null));
+  }, [isSidebarOpen]);
 
   const handleAgentClick = (agentName: string) => {
     setSidebarOpen(false);
@@ -16,6 +44,15 @@ export function Sidebar() {
       type: "info"
     });
   };
+
+  const recentNotifications = notifications.slice(-5).reverse();
+
+  const cpuValue = metrics?.cpu ?? metrics?.cpuPercent ?? metrics?.cpuUsage;
+  const memValue = metrics?.memory ?? metrics?.memoryMB ?? metrics?.memoryUsage;
+  const cpuPercent = typeof cpuValue === 'number' ? cpuValue : null;
+  const memDisplay = typeof memValue === 'number'
+    ? (memValue > 1000 ? `${(memValue / 1024).toFixed(1)} GB` : `${memValue} MB`)
+    : (typeof memValue === 'string' ? memValue : null);
 
   return (
     <AnimatePresence>
@@ -54,19 +91,28 @@ export function Sidebar() {
                   Active Agents
                 </h3>
                 <div className="space-y-3">
-                  {['Alpha-7', 'Beta-2', 'Gamma-1'].map((agent, i) => (
-                    <div 
-                      key={i} 
-                      onClick={() => handleAgentClick(agent)}
-                      className="flex items-center justify-between group cursor-pointer"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span className="text-sm font-medium text-slate-700 group-hover:text-primary-dark transition-colors">{agent}</span>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-primary-dark transition-colors" />
+                  {agentsLoading ? (
+                    <div className="flex items-center gap-2 py-2">
+                      <div className="w-4 h-4 border-2 border-slate-300 border-t-primary rounded-full animate-spin" />
+                      <span className="text-sm text-slate-500">Loading...</span>
                     </div>
-                  ))}
+                  ) : agentList.length === 0 ? (
+                    <p className="text-sm text-slate-400">No agents found.</p>
+                  ) : (
+                    agentList.map((agent) => (
+                      <div 
+                        key={agent.id} 
+                        onClick={() => handleAgentClick(agent.name)}
+                        className="flex items-center justify-between group cursor-pointer"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-2 h-2 rounded-full ${statusColor(agent.status)}`} />
+                          <span className="text-sm font-medium text-slate-700 group-hover:text-primary-dark transition-colors">{agent.name}</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-primary-dark transition-colors" />
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -77,23 +123,24 @@ export function Sidebar() {
                   Notifications
                 </h3>
                 <div className="space-y-4">
-                  {[
-                    { title: 'Research Completed', time: '2m ago', type: 'success' },
-                    { title: 'Tool Error: Database', time: '15m ago', type: 'error' },
-                    { title: 'New Agent Deployed', time: '1h ago', type: 'info' },
-                  ].map((notif, i) => (
-                    <div key={i} className="flex gap-3">
-                      <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
-                        notif.type === 'success' ? 'bg-emerald-500' :
-                        notif.type === 'error' ? 'bg-red-500' :
-                        'bg-blue-500'
-                      }`} />
-                      <div>
-                        <div className="text-sm font-medium text-slate-800">{notif.title}</div>
-                        <div className="text-xs text-slate-500 mt-0.5">{notif.time}</div>
+                  {recentNotifications.length === 0 ? (
+                    <p className="text-sm text-slate-400">No notifications yet.</p>
+                  ) : (
+                    recentNotifications.map((notif) => (
+                      <div key={notif.id} className="flex gap-3">
+                        <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
+                          notif.type === 'success' ? 'bg-emerald-500' :
+                          notif.type === 'error' ? 'bg-red-500' :
+                          notif.type === 'warning' ? 'bg-amber-500' :
+                          'bg-blue-500'
+                        }`} />
+                        <div>
+                          <div className="text-sm font-medium text-slate-800">{notif.title}</div>
+                          <div className="text-xs text-slate-500 mt-0.5 line-clamp-2">{notif.message}</div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -107,19 +154,19 @@ export function Sidebar() {
                   <div>
                     <div className="flex justify-between text-xs mb-1.5">
                       <span className="text-slate-600 font-medium">CPU</span>
-                      <span className="text-slate-900 font-mono">24%</span>
+                      <span className="text-slate-900 font-mono">{cpuPercent != null ? `${cpuPercent}%` : '—'}</span>
                     </div>
                     <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-primary w-[24%]" />
+                      <div className="h-full bg-primary transition-all" style={{ width: cpuPercent != null ? `${Math.min(cpuPercent, 100)}%` : '0%' }} />
                     </div>
                   </div>
                   <div>
                     <div className="flex justify-between text-xs mb-1.5">
                       <span className="text-slate-600 font-medium">Memory</span>
-                      <span className="text-slate-900 font-mono">4.2 GB</span>
+                      <span className="text-slate-900 font-mono">{memDisplay ?? '—'}</span>
                     </div>
                     <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-500 w-[45%]" />
+                      <div className="h-full bg-blue-500 transition-all" style={{ width: cpuPercent != null ? '45%' : '0%' }} />
                     </div>
                   </div>
                 </div>

@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ReactFlow,
   MiniMap,
@@ -11,28 +11,82 @@ import {
   Edge
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { memory } from '@/lib/api';
 
-const initialNodes = [
-  { id: '1', position: { x: 250, y: 50 }, data: { label: 'User Profile' }, style: { background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px' } },
-  { id: '2', position: { x: 100, y: 150 }, data: { label: 'Preferences' }, style: { background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px' } },
-  { id: '3', position: { x: 400, y: 150 }, data: { label: 'Recent Activity' }, style: { background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px' } },
-  { id: '4', position: { x: 250, y: 250 }, data: { label: 'Project Alpha' }, style: { background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px' } },
-];
+const NODE_STYLE = {
+  background: '#f8fafc',
+  border: '1px solid #cbd5e1',
+  borderRadius: '8px',
+  padding: '10px',
+};
 
-const initialEdges = [
-  { id: 'e1-2', source: '1', target: '2', animated: true, style: { stroke: '#94a3b8' } },
-  { id: 'e1-3', source: '1', target: '3', animated: true, style: { stroke: '#94a3b8' } },
-  { id: 'e3-4', source: '3', target: '4', animated: true, style: { stroke: '#94a3b8' } },
-];
+const EDGE_STYLE = { stroke: '#94a3b8' };
+
+function layoutNodes(apiNodes: any[]) {
+  const cols = Math.max(3, Math.ceil(Math.sqrt(apiNodes.length)));
+  const spacingX = 220;
+  const spacingY = 140;
+  return apiNodes.map((node: any, i: number) => ({
+    id: String(node.id),
+    position: { x: (i % cols) * spacingX + 50, y: Math.floor(i / cols) * spacingY + 50 },
+    data: { label: node.title || node.label || node.name || `Node ${node.id}` },
+    style: NODE_STYLE,
+  }));
+}
+
+function layoutEdges(apiEdges: any[]) {
+  return apiEdges.map((edge: any, i: number) => ({
+    id: edge.id ? String(edge.id) : `e-${edge.source}-${edge.target}-${i}`,
+    source: String(edge.source),
+    target: String(edge.target),
+    animated: true,
+    style: EDGE_STYLE,
+  }));
+}
 
 export function MemoryGraph() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    memory.getGraph()
+      .then((data) => {
+        if (cancelled) return;
+        const apiNodes = Array.isArray(data.nodes) ? data.nodes : [];
+        const apiEdges = Array.isArray(data.edges) ? data.edges : [];
+        setNodes(layoutNodes(apiNodes));
+        setEdges(layoutEdges(apiEdges));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setNodes([]);
+          setEdges([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   const onConnect = useCallback(
     (params: Connection | Edge) => setEdges((eds) => addEdge(params, eds)),
     [setEdges],
   );
+
+  if (loading) {
+    return (
+      <div className="w-full h-full bg-slate-50/50 rounded-2xl border border-slate-200 overflow-hidden flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-3 border-slate-300 border-t-primary rounded-full animate-spin" />
+          <span className="text-sm text-slate-500 font-medium">Loading graph...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-full bg-slate-50/50 rounded-2xl border border-slate-200 overflow-hidden">

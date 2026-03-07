@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Activity, Cpu, Database, Network, Bug, Play, Pause, Square, RefreshCw } from 'lucide-react';
+import { X, Activity, Cpu, Database, Network, Bug, Play, Pause, Square, RefreshCw, Dna } from 'lucide-react';
 import { useStore } from '@/store/useStore';
+import { AgentGenome } from './AgentGenome';
 
 interface AgentInspectorProps {
   agent: any;
@@ -10,7 +11,7 @@ interface AgentInspectorProps {
 
 export function AgentInspector({ agent, onClose }: AgentInspectorProps) {
   const { addNotification } = useStore();
-  const [activeTab, setActiveTab] = useState<'state' | 'decisions' | 'debug'>('state');
+  const [activeTab, setActiveTab] = useState<'state' | 'genome' | 'decisions' | 'debug'>('state');
   const [isDebugRunning, setIsDebugRunning] = useState(false);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
 
@@ -71,6 +72,12 @@ export function AgentInspector({ agent, onClose }: AgentInspectorProps) {
           className={`pb-3 text-xs font-bold uppercase tracking-widest transition-all border-b-2 ${activeTab === 'state' ? 'border-primary text-primary-dark' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
         >
           System State
+        </button>
+        <button 
+          onClick={() => setActiveTab('genome')}
+          className={`pb-3 text-xs font-bold uppercase tracking-widest transition-all border-b-2 flex items-center gap-1.5 ${activeTab === 'genome' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+        >
+          <Dna className="w-3 h-3" /> Genome
         </button>
         <button 
           onClick={() => setActiveTab('decisions')}
@@ -134,6 +141,26 @@ export function AgentInspector({ agent, onClose }: AgentInspectorProps) {
                     <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-500 bg-emerald-50 px-2 py-1 rounded-md">Connected</span>
                   </div>
                 </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'genome' && (
+            <motion.div key="genome" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="flex flex-col gap-4">
+              <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm p-3">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Agent DNA Signature</div>
+                <p className="text-xs text-slate-500 px-1 mb-3">
+                  Unique genetic profile derived from agent capabilities, experience, and configuration.
+                </p>
+                <AgentGenome agent={agent} className="h-[340px]" />
+              </div>
+              <div className="bg-indigo-50/50 rounded-2xl border border-indigo-100 p-4">
+                <div className="text-xs font-bold text-indigo-700 mb-1">Genome Analysis</div>
+                <p className="text-xs text-indigo-600/80 leading-relaxed">
+                  This agent&apos;s genome shows strong {agent.role?.toLowerCase().includes('research') ? 'cognitive' : 'motor'} traits
+                  with {agent.status === 'Active' ? 'high' : 'moderate'} adaptability scores. 
+                  Task completion rate correlates with memory persistence markers.
+                </p>
               </div>
             </motion.div>
           )}

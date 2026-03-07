@@ -1,7 +1,8 @@
 import { PageWrapper } from '@/components/layout/PageWrapper';
-import { ArrowRight, Sparkles, Activity, Layers, Cpu } from 'lucide-react';
+import { ArrowRight, Sparkles, Activity, Layers, Cpu, Brain, GitBranch, Shield } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
+import { NeuralPulse } from '@/components/dashboard/NeuralPulse';
 
 export default function Landing() {
   return (
@@ -46,34 +47,16 @@ export default function Landing() {
         </div>
       </motion.div>
 
-      {/* Live System Visualization (Mock) */}
+      {/* Neural Network Visualization */}
       <motion.div
         initial={{ y: 40, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.8, delay: 0.2, ease: 'easeOut' }}
         className="w-full max-w-5xl mt-24 glass-panel rounded-3xl p-2 border-white/40 overflow-hidden relative"
       >
-        <div className="absolute inset-0 bg-gradient-to-b from-white/40 to-transparent pointer-events-none" />
-        <div className="bg-slate-50/80 rounded-[22px] border border-slate-200/50 p-6 md:p-10 shadow-inner">
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-3">
-              <div className="w-3 h-3 rounded-full bg-primary animate-pulse" />
-              <span className="font-medium text-slate-700">System Activity</span>
-            </div>
-            <div className="text-sm text-slate-500 font-mono">14 active nodes</div>
-          </div>
-          
-          <div className="h-64 flex items-end gap-2">
-            {Array.from({ length: 24 }).map((_, i) => (
-              <motion.div
-                key={i}
-                initial={{ height: '10%' }}
-                animate={{ height: `${Math.random() * 80 + 20}%` }}
-                transition={{ duration: 2, repeat: Infinity, repeatType: 'reverse', delay: i * 0.1 }}
-                className="flex-1 bg-gradient-to-t from-primary/20 to-primary/60 rounded-t-sm"
-              />
-            ))}
-          </div>
+        <div className="absolute inset-0 bg-gradient-to-b from-white/40 to-transparent pointer-events-none z-10" />
+        <div className="bg-slate-50/80 rounded-[22px] border border-slate-200/50 shadow-inner overflow-hidden">
+          <NeuralPulse activeAgents={6} systemLoad={65} className="h-72" />
         </div>
       </motion.div>
 
@@ -83,6 +66,9 @@ export default function Landing() {
           { icon: Activity, title: 'Real-time Synthesis', desc: 'Watch as agents gather, analyze, and synthesize data streams instantly.' },
           { icon: Layers, title: 'Deep Memory', desc: 'A persistent vector store that remembers past research to inform future queries.' },
           { icon: Cpu, title: 'Tool Registry', desc: 'Equip your agents with custom tools, APIs, and execution environments.' },
+          { icon: Brain, title: 'Neural Intelligence', desc: 'Visualize AI cognition with real-time neural activity maps and cognitive flow analysis.' },
+          { icon: GitBranch, title: 'Agent Evolution', desc: 'Run simulations, A/B experiments, and evolve agent capabilities over time.' },
+          { icon: Shield, title: 'Genome Profiling', desc: 'Unique DNA-like signatures for each agent revealing cognitive traits and strengths.' },
         ].map((feature, i) => (
           <motion.div
             key={i}
